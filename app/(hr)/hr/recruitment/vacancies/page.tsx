@@ -1,0 +1,12 @@
+import type { Metadata } from "next";
+import { ResourceWorkspace } from "@/components/resource-workspace";
+import { getOptions, getResource } from "@/lib/hr-data";
+import type { ResourceConfig } from "@/types/resources";
+export const metadata:Metadata={title:"Job vacancies"};
+export default async function VacanciesPage(){const [records,departments]=await Promise.all([getResource("vacancies"),getOptions("departments")]);const config:ResourceConfig={entity:"vacancies",title:"Job vacancies",description:"Plan hiring needs, publish openings, and monitor applicant volume.",singular:"Vacancy",addLabel:"Create vacancy",searchPlaceholder:"Search vacancy title, number, or department…",columns:[
+  {key:"title",label:"Position"},{key:"department",label:"Department"},{key:"employment_type",label:"Employment type"},{key:"work_arrangement",label:"Work setup"},{key:"number_of_openings",label:"Openings"},{key:"applicants",label:"Applicants"},{key:"closing_date",label:"Closes",format:"date"},{key:"status",label:"Status",format:"status"}],fields:[
+  {name:"title",label:"Job title",type:"text",required:true,section:"Basic information"},{name:"department_id",label:"Department",type:"select",options:departments,section:"Basic information"},{name:"employment_type",label:"Employment type",type:"select",required:true,options:["Full-time","Part-time","Contract","Internship","Temporary"].map(x=>({label:x,value:x})),section:"Basic information"},{name:"work_arrangement",label:"Work arrangement",type:"select",required:true,options:["On-site","Hybrid","Remote"].map(x=>({label:x,value:x})),section:"Basic information"},{name:"number_of_openings",label:"Number of openings",type:"number",required:true,section:"Basic information"},
+  {name:"description",label:"Job description",type:"textarea",colSpan:2,section:"Job details",helper:"Describe the role’s purpose and primary outcomes."},
+  {name:"salary_min",label:"Salary minimum",type:"number",section:"Compensation"},{name:"salary_max",label:"Salary maximum",type:"number",section:"Compensation"},{name:"currency",label:"Currency",type:"select",required:true,options:["PHP","USD","SGD"].map(x=>({label:x,value:x})),section:"Compensation"},
+  {name:"closing_date",label:"Closing date",type:"date",section:"Publishing"},{name:"status",label:"Status",type:"select",required:true,options:["draft","open","paused","closed","filled","cancelled"].map(x=>({label:x.replaceAll("_"," "),value:x})),section:"Publishing"}
+]};return <ResourceWorkspace config={config} records={records}/>;}

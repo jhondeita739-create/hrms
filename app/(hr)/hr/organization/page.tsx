@@ -1,0 +1,6 @@
+import type {Metadata} from "next";
+import {ResourceWorkspace} from "@/components/resource-workspace";
+import {getResource} from "@/lib/hr-data";
+import type {ResourceConfig} from "@/types/resources";
+export const metadata:Metadata={title:"Organization"};
+export default async function OrganizationPage(){const records=await getResource("departments");const config:ResourceConfig={entity:"departments",title:"Organization",description:"Maintain the structure used across hiring, employees, access, and reporting.",singular:"Department",addLabel:"Add department",searchPlaceholder:"Search department name, code, or manager…",columns:[{key:"name",label:"Department"},{key:"code",label:"Code"},{key:"manager",label:"Department lead"},{key:"people",label:"People"},{key:"created_at",label:"Created",format:"date"},{key:"status",label:"Status",format:"status"}],fields:[{name:"name",label:"Department name",type:"text",required:true,section:"Department details"},{name:"code",label:"Department code",type:"text",required:true,section:"Department details",helper:"Short, stable code used in reports and integrations."},{name:"status",label:"Status",type:"select",required:true,options:[{label:"Active",value:"active"},{label:"Inactive",value:"inactive"}],section:"Control"}]};return <ResourceWorkspace config={config} records={records}/>;}
