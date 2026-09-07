@@ -34,7 +34,7 @@ A workflow-centered HRMS built with Next.js, TypeScript, Supabase Auth, PostgreS
 
 Private buckets are created by the migration. Employee-document uploads accept PDF, JPG, and PNG files up to 10 MB. The UI requests 60-second signed download URLs only after the document row passes RLS.
 
-The public candidate experience is available at `/`, `/careers`, and `/careers/track`. The initial form asks only for contact details and a searchable PDF resume up to 5 MB. The server verifies the MIME type, `.pdf` extension, PDF signature, readable extracted text, and resume-like section structure before writing to the private `applicant-documents` bucket. This automated check reduces mislabeled uploads but does not replace final HR verification.
+The public candidate experience is available at `/`, `/careers`, and `/careers/track`. The initial form asks only for contact details and a searchable PDF resume up to 4 MB. The server verifies the MIME type, `.pdf` extension, PDF signature, readable extracted text, and resume-like section structure before writing to the private `applicant-documents` bucket. The Server Action allows a 4.25 MB multipart request, keeping it below Vercel's 4.5 MB function payload limit. This automated check reduces mislabeled uploads but does not replace final HR verification.
 
 When HR moves an application beyond **Resume Screening**, the applicant receives a portal notification and, when Resend is configured, an email containing a random single-use profile link that expires after 14 days. The detailed professional, education, and relevant-experience form is available only through that link. Apply `202609070007_screened_applicant_profiles.sql` before using this workflow.
 

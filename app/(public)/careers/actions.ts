@@ -52,8 +52,8 @@ function splitFullName(value: string) {
 async function validateResumePdf(file: File) {
   if (file.type !== "application/pdf" || !file.name.toLowerCase().endsWith(".pdf"))
     return "Only PDF resume files are accepted.";
-  if (file.size > 5 * 1024 * 1024)
-    return "Your PDF must be smaller than 5 MB.";
+  if (file.size > 4 * 1024 * 1024)
+    return "Your PDF must be 4 MB or smaller.";
   if (file.size < 500)
     return "The uploaded PDF is empty or incomplete.";
 

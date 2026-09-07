@@ -28,6 +28,7 @@ export function PublicApplicationForm({
     initialApplicationState,
   );
   const [resumeName, setResumeName] = useState("");
+  const [resumeClientError, setResumeClientError] = useState("");
 
   if (state.status === "success")
     return (
@@ -92,7 +93,7 @@ export function PublicApplicationForm({
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-semibold text-slate-700">{resumeName || "Choose your PDF resume"}</span>
-              <span className="mt-1 block text-xs text-slate-400">Searchable PDF only · Maximum 5 MB</span>
+              <span className="mt-1 block text-xs text-slate-400">Searchable PDF only · Maximum 4 MB</span>
             </span>
             <span className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-xs font-bold text-slate-700 shadow-sm group-hover:text-brand-700">
               {resumeName ? "Replace PDF" : "Browse PDF"}
@@ -103,11 +104,23 @@ export function PublicApplicationForm({
               type="file"
               required
               accept="application/pdf,.pdf"
-              onChange={(event) => setResumeName(event.currentTarget.files?.[0]?.name ?? "")}
+              onChange={(event) => {
+                const input = event.currentTarget;
+                const file = input.files?.[0];
+                const tooLarge = Boolean(file && file.size > 4 * 1024 * 1024);
+                const message = tooLarge ? "Your PDF must be 4 MB or smaller." : "";
+                input.setCustomValidity(message);
+                setResumeClientError(message);
+                setResumeName(file?.name ?? "");
+              }}
               className="sr-only"
             />
           </label>
-          {state.fieldErrors?.resume && <p className="mt-1.5 text-xs text-red-600">{state.fieldErrors.resume}</p>}
+          {(resumeClientError || state.fieldErrors?.resume) && (
+            <p className="mt-1.5 text-xs text-red-600">
+              {resumeClientError || state.fieldErrors?.resume}
+            </p>
+          )}
           <div className="mt-4 flex items-start gap-3 rounded-2xl bg-blue-50 p-4 text-xs leading-5 text-blue-800">
             <FileCheck2 className="mt-0.5 h-4 w-4 shrink-0" />
             The server verifies the PDF format and checks extracted text for resume sections. HR still performs the final document review.
