@@ -1,7 +1,8 @@
 "use server";
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { PDFParse } from "pdf-parse";
 import { z } from "zod";
 import { createAdminClient, isAdminConfigured } from "@/lib/supabase/admin";
 
@@ -12,37 +13,17 @@ export type ApplicationState = {
   fieldErrors?: Record<string, string>;
 };
 export const initialApplicationState: ApplicationState = { status: "idle" };
-const optional = (value: unknown) => String(value || "").trim() || null;
 const applicationSchema = z.object({
   vacancy_id: z.string().min(1),
-  first_name: z.string().trim().min(1, "First name is required"),
-  last_name: z.string().trim().min(1, "Last name is required"),
+  full_name: z
+    .string()
+    .trim()
+    .min(3, "Enter your complete name")
+    .max(160)
+    .refine((value) => value.split(/\s+/).length >= 2, "Enter your first and last name"),
   email: z.email("Enter a valid email address"),
-  phone: z.string().trim().min(7, "Enter a valid phone number"),
-  city: z.string().trim().min(2, "City is required"),
-  region: z.string().trim().min(2, "Province or region is required"),
-  linkedin_url: z
-    .union([z.url("Enter a complete URL"), z.literal("")])
-    .optional(),
-  current_job_title: z.string().optional(),
-  current_employer: z.string().optional(),
-  years_experience: z.preprocess(
-    (value) => Number(value || 0),
-    z.number().min(0).max(60),
-  ),
-  expected_salary: z.preprocess(
-    (value) => (value ? Number(value) : null),
-    z.number().nonnegative().nullable(),
-  ),
-  availability_date: z.string().optional(),
-  school: z.string().optional(),
-  degree: z.string().optional(),
-  field_of_study: z.string().optional(),
-  experience_company: z.string().optional(),
-  experience_position: z.string().optional(),
-  experience_start: z.string().optional(),
-  experience_end: z.string().optional(),
-  cover_letter: z.string().trim().max(5000).optional(),
+  phone: z.string().trim().regex(/^\d{7,15}$/, "Use 7 to 15 numbers only"),
+  location: z.string().trim().min(2, "Location is required").max(160),
   consent: z.literal("on", {
     error: "You must accept the applicant privacy notice",
   }),
@@ -55,6 +36,53 @@ function errors(error: z.ZodError) {
 }
 function reference(prefix: string) {
   return `${prefix}-${new Date().toISOString().slice(2, 10).replaceAll("-", "")}-${randomUUID().slice(0, 4).toUpperCase()}`;
+}
+
+function splitFullName(value: string) {
+  const parts = value.trim().split(/\s+/);
+  if (parts.length === 1)
+    return { firstName: parts[0], middleName: null, lastName: parts[0] };
+  return {
+    firstName: parts[0],
+    middleName: parts.length > 2 ? parts.slice(1, -1).join(" ") : null,
+    lastName: parts.at(-1) || parts[0],
+  };
+}
+
+async function validateResumePdf(file: File) {
+  if (file.type !== "application/pdf" || !file.name.toLowerCase().endsWith(".pdf"))
+    return "Only PDF resume files are accepted.";
+  if (file.size > 5 * 1024 * 1024)
+    return "Your PDF must be smaller than 5 MB.";
+  if (file.size < 500)
+    return "The uploaded PDF is empty or incomplete.";
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const signature = new TextDecoder("ascii").decode(bytes.slice(0, 5));
+  if (signature !== "%PDF-")
+    return "The file is not a valid PDF document.";
+
+  const parser = new PDFParse({ data: bytes });
+  try {
+    const result = await parser.getText({ first: 6 });
+    const text = result.text.toLowerCase().replace(/\s+/g, " ").trim();
+    const indicators = [
+      /\b(work experience|professional experience|employment history|experience)\b/,
+      /\b(education|academic background|qualification)\b/,
+      /\b(skills|technical skills|competencies|expertise)\b/,
+      /\b(summary|professional profile|career objective|objective)\b/,
+      /\b(certifications?|projects?|achievements?|references?)\b/,
+    ];
+    const matchedSections = indicators.filter((pattern) => pattern.test(text)).length;
+    const wordCount = text.split(/\s+/).filter(Boolean).length;
+    if (wordCount < 40 || matchedSections < 2)
+      return "This PDF does not appear to contain a readable resume. Upload a searchable PDF with sections such as experience, education, or skills.";
+  } catch {
+    return "The PDF could not be read. Upload an unencrypted, searchable resume PDF.";
+  } finally {
+    await parser.destroy();
+  }
+  return null;
 }
 
 export async function submitPublicApplication(
@@ -81,22 +109,12 @@ export async function submitPublicApplication(
       message: "Please attach your resume.",
       fieldErrors: { resume: "Resume is required" },
     };
-  const allowed = new Set([
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ]);
-  if (!allowed.has(resume.type))
+  const resumeError = await validateResumePdf(resume);
+  if (resumeError)
     return {
       status: "error",
-      message: "Your resume must be a PDF, DOC, or DOCX file.",
-      fieldErrors: { resume: "Unsupported file type" },
-    };
-  if (resume.size > 5 * 1024 * 1024)
-    return {
-      status: "error",
-      message: "Your resume must be smaller than 5 MB.",
-      fieldErrors: { resume: "File is too large" },
+      message: "Please upload a valid resume PDF.",
+      fieldErrors: { resume: resumeError },
     };
   if (!isAdminConfigured()) {
     const previewReference = reference("APL");
@@ -109,6 +127,7 @@ export async function submitPublicApplication(
   }
   const db = createAdminClient();
   const values = parsed.data;
+  const name = splitFullName(values.full_name);
   const { data: vacancy, error: vacancyError } = await db
     .from("job_vacancies")
     .select("id,organization_id,status")
@@ -143,40 +162,29 @@ export async function submitPublicApplication(
         status: "error",
         message: `You already applied for this role. Track it using reference ${duplicate.application_number}.`,
       };
-    await db
+    const { error: updateApplicantError } = await db
       .from("applicants")
       .update({
         phone: values.phone,
-        city: values.city,
-        region: values.region,
-        linkedin_url: optional(values.linkedin_url),
-        current_job_title: optional(values.current_job_title),
-        current_employer: optional(values.current_employer),
-        years_experience: values.years_experience,
-        expected_salary: values.expected_salary,
-        availability_date: optional(values.availability_date),
+        city: values.location,
         privacy_consent_at: new Date().toISOString(),
         status: "active",
       })
       .eq("id", applicantId);
+    if (updateApplicantError)
+      return { status: "error", message: "We could not update your contact information." };
   } else {
     const { data: created, error: createError } = await db
       .from("applicants")
       .insert({
         organization_id: vacancy.organization_id,
         applicant_number: reference("APP"),
-        first_name: values.first_name,
-        last_name: values.last_name,
+        first_name: name.firstName,
+        middle_name: name.middleName,
+        last_name: name.lastName,
         email: values.email.toLowerCase(),
         phone: values.phone,
-        city: values.city,
-        region: values.region,
-        linkedin_url: optional(values.linkedin_url),
-        current_job_title: optional(values.current_job_title),
-        current_employer: optional(values.current_employer),
-        years_experience: values.years_experience,
-        expected_salary: values.expected_salary,
-        availability_date: optional(values.availability_date),
+        city: values.location,
         source: "Careers page",
         privacy_consent_at: new Date().toISOString(),
         status: "active",
@@ -193,7 +201,7 @@ export async function submitPublicApplication(
     createdApplicant = true;
   }
   const applicationNumber = reference("APL");
-  const { data: stage } = await db
+  const { data: stage, error: stageError } = await db
     .from("recruitment_stages")
     .select("id")
     .eq("organization_id", vacancy.organization_id)
@@ -202,6 +210,13 @@ export async function submitPublicApplication(
     .order("stage_order")
     .limit(1)
     .maybeSingle();
+  if (stageError || !stage) {
+    if (createdApplicant) await db.from("applicants").delete().eq("id", applicantId);
+    return {
+      status: "error",
+      message: "Applications are temporarily unavailable because the recruitment workflow is not configured.",
+    };
+  }
   const { data: application, error: applicationError } = await db
     .from("job_applications")
     .insert({
@@ -209,9 +224,8 @@ export async function submitPublicApplication(
       application_number: applicationNumber,
       applicant_id: applicantId,
       job_vacancy_id: vacancy.id,
-      current_stage_id: stage?.id,
+      current_stage_id: stage.id,
       application_status: "in_progress",
-      cover_letter: optional(values.cover_letter),
     })
     .select("id")
     .single();
@@ -224,29 +238,7 @@ export async function submitPublicApplication(
         applicationError?.message || "We could not submit your application.",
     };
   }
-  if (values.school)
-    await db.from("applicant_education").insert({
-      applicant_id: applicantId,
-      school: values.school,
-      degree: optional(values.degree),
-      field_of_study: optional(values.field_of_study),
-    });
-  if (values.experience_company && values.experience_position)
-    await db.from("applicant_experience").insert({
-      applicant_id: applicantId,
-      company: values.experience_company,
-      position: values.experience_position,
-      start_date: optional(values.experience_start),
-      end_date: optional(values.experience_end),
-      currently_employed: !values.experience_end,
-    });
-  const extension =
-    resume.name
-      .split(".")
-      .pop()
-      ?.toLowerCase()
-      .replace(/[^a-z0-9]/g, "") || "pdf";
-  const storagePath = `${vacancy.organization_id}/${applicantId}/${application.id}/${randomUUID()}.${extension}`;
+  const storagePath = `${vacancy.organization_id}/${applicantId}/${application.id}/${randomUUID()}.pdf`;
   const { error: uploadError } = await db.storage
     .from("applicant-documents")
     .upload(storagePath, resume, { contentType: resume.type, upsert: false });
@@ -259,7 +251,7 @@ export async function submitPublicApplication(
       message: "Your resume could not be uploaded. Please try again.",
     };
   }
-  await db.from("applicant_documents").insert({
+  const { error: documentError } = await db.from("applicant_documents").insert({
     organization_id: vacancy.organization_id,
     applicant_id: applicantId,
     job_application_id: application.id,
@@ -269,11 +261,21 @@ export async function submitPublicApplication(
     file_name: resume.name,
     file_size: resume.size,
     mime_type: resume.type,
-    verification_status: "submitted",
+    verification_status: "under_review",
+    notes: "PDF format and resume structure checks passed; final HR verification is required.",
   });
+  if (documentError) {
+    await db.storage.from("applicant-documents").remove([storagePath]);
+    await db.from("job_applications").delete().eq("id", application.id);
+    if (createdApplicant) await db.from("applicants").delete().eq("id", applicantId);
+    return {
+      status: "error",
+      message: "Your resume could not be attached to the application. Please try again.",
+    };
+  }
   await db.from("application_stage_history").insert({
     job_application_id: application.id,
-    to_stage_id: stage?.id,
+    to_stage_id: stage.id,
     reason: "Application submitted through careers portal",
   });
   await db.from("audit_logs").insert({
@@ -292,6 +294,97 @@ export async function submitPublicApplication(
   };
 }
 
+export type ProfileCompletionState = {
+  status: "idle" | "error" | "success";
+  message?: string;
+  fieldErrors?: Record<string, string>;
+};
+
+export const initialProfileCompletionState: ProfileCompletionState = {
+  status: "idle",
+};
+
+const profileCompletionSchema = z
+  .object({
+    token: z.string().regex(/^[a-f0-9]{64}$/i, "The secure profile link is invalid"),
+    alternative_phone: z.union([
+      z.string().regex(/^\d{7,15}$/, "Use 7 to 15 numbers only"),
+      z.literal(""),
+    ]),
+    linkedin_url: z.union([z.url("Enter a complete LinkedIn URL"), z.literal("")]),
+    current_job_title: z.string().trim().min(2, "Current or most recent role is required").max(160),
+    current_employer: z.string().trim().max(160),
+    years_experience: z.preprocess((value) => Number(value), z.number().min(0).max(60)),
+    expected_salary: z.union([z.string().regex(/^\d+(\.\d{1,2})?$/, "Enter a valid amount"), z.literal("")]),
+    availability_date: z.union([z.string().date(), z.literal("")]),
+    about: z.string().trim().min(30, "Add at least 30 characters about your professional background").max(3000),
+    school: z.string().trim().min(2, "School or university is required").max(200),
+    degree: z.string().trim().min(2, "Degree or qualification is required").max(160),
+    field_of_study: z.string().trim().min(2, "Field of study is required").max(160),
+    education_start: z.union([z.string().date(), z.literal("")]),
+    education_end: z.union([z.string().date(), z.literal("")]),
+    education_notes: z.string().trim().max(1000),
+    experience_company: z.string().trim().max(160),
+    experience_position: z.string().trim().max(160),
+    employment_type: z.string().trim().max(80),
+    experience_start: z.union([z.string().date(), z.literal("")]),
+    experience_end: z.union([z.string().date(), z.literal("")]),
+    currently_employed: z.preprocess((value) => value === "on", z.boolean()),
+    responsibilities: z.string().trim().max(2000),
+    achievements: z.string().trim().max(2000),
+  })
+  .refine(
+    (value) =>
+      (!value.experience_company && !value.experience_position) ||
+      Boolean(value.experience_company && value.experience_position),
+    {
+      message: "Provide both company and position, or leave both blank",
+      path: ["experience_company"],
+    },
+  );
+
+export async function completeScreenedApplicantProfile(
+  _: ProfileCompletionState,
+  formData: FormData,
+): Promise<ProfileCompletionState> {
+  const parsed = profileCompletionSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success)
+    return {
+      status: "error",
+      message: "Please complete the highlighted profile information.",
+      fieldErrors: errors(parsed.error),
+    };
+  if (!isAdminConfigured())
+    return { status: "error", message: "Applicant profile completion is not configured." };
+
+  const { token, ...profileData } = parsed.data;
+  const db = createAdminClient();
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const { data: applicationId, error } = await db.rpc(
+    "complete_screened_applicant_profile",
+    {
+      p_completion_token_hash: tokenHash,
+      p_profile_data: profileData,
+    },
+  );
+  if (error)
+    return {
+      status: "error",
+      message: error.message.includes("invalid or has expired")
+        ? "This secure profile link is invalid, expired, or has already been used. Contact HR for a new link."
+        : error.message,
+    };
+
+  revalidatePath("/hr/recruitment/applicants");
+  revalidatePath("/hr/dashboard");
+  return {
+    status: "success",
+    message: applicationId
+      ? "Your complete profile was submitted securely. HR can now continue the interview process."
+      : "Your profile was submitted.",
+  };
+}
+
 export type TrackingState = {
   status: "idle" | "error" | "success";
   message?: string;
@@ -300,7 +393,15 @@ export type TrackingState = {
     position: string;
     stage: string;
     applicationStatus: string;
+    profileCompletionStatus: string;
     appliedAt: string;
+    notifications: Array<{
+      id: string;
+      subject: string;
+      body: string;
+      eventType: string;
+      sentAt: string;
+    }>;
   };
 };
 export const initialTrackingState: TrackingState = { status: "idle" };
@@ -327,14 +428,16 @@ export async function trackApplication(
         position: "Product Designer",
         stage: "Recruiter review",
         applicationStatus: "In progress",
+        profileCompletionStatus: "not_requested",
         appliedAt: "2026-08-25",
+        notifications: [],
       },
     };
   const db = createAdminClient();
   const { data, error } = await db
     .from("job_applications")
     .select(
-      "application_number,application_status,applied_at,applicants!inner(email),job_vacancies(title),recruitment_stages(name)",
+      "id,application_number,application_status,profile_completion_status,applied_at,applicants!inner(email),job_vacancies(title),recruitment_stages(name)",
     )
     .eq("application_number", referenceValue)
     .ilike("applicants.email", email)
@@ -346,6 +449,18 @@ export async function trackApplication(
     };
   const vacancy = data.job_vacancies as unknown as { title?: string } | null;
   const stage = data.recruitment_stages as unknown as { name?: string } | null;
+  const { data: notifications } = await db
+    .from("applicant_notifications")
+    .select("id,subject,body,event_type,queued_at")
+    .eq("job_application_id", data.id)
+    .eq("channel", "portal")
+    .in("delivery_status", ["sent", "read"])
+    .order("queued_at", { ascending: false });
+  if (notifications?.length)
+    await db
+      .from("applicant_notifications")
+      .update({ delivery_status: "read", read_at: new Date().toISOString() })
+      .in("id", notifications.map((notification) => notification.id));
   return {
     status: "success",
     result: {
@@ -353,7 +468,15 @@ export async function trackApplication(
       position: vacancy?.title || "Position",
       stage: stage?.name || "Application received",
       applicationStatus: data.application_status,
+      profileCompletionStatus: data.profile_completion_status,
       appliedAt: data.applied_at,
+      notifications: (notifications || []).map((notification) => ({
+        id: notification.id,
+        subject: notification.subject,
+        body: notification.body,
+        eventType: notification.event_type,
+        sentAt: notification.queued_at,
+      })),
     },
   };
 }

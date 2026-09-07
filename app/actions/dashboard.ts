@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 import type { ApplicantBoardColumn } from "@/lib/hr-data";
+import { updateApplicationStage } from "@/app/actions/recruitment";
 
 export type DashboardMutationResult =
   | { ok: true; message: string }
@@ -30,6 +31,11 @@ export async function moveApplicationStage(
 ): Promise<DashboardMutationResult> {
   if (!isSupabaseConfigured())
     return { ok: true, message: "Applicant moved in preview mode." };
+  if (column === "hired")
+    return {
+      ok: false,
+      message: "Open the applicant profile and use Hire & onboard to create the temporary employee account.",
+    };
 
   const ctx = await dashboardContext();
   if (!ctx) return { ok: false, message: "Sign in to update applicants." };
@@ -43,12 +49,7 @@ export async function moveApplicationStage(
   if (readError || !application)
     return { ok: false, message: "This application is no longer available." };
 
-  const targetName =
-    column === "hired"
-      ? "Hired"
-      : column === "interviewing"
-        ? "HR Interview"
-        : "Applied";
+  const targetName = column === "interviewing" ? "HR Interview" : "Applied";
   const { data: target, error: stageError } = await ctx.db
     .from("recruitment_stages")
     .select("id,name")
@@ -60,53 +61,11 @@ export async function moveApplicationStage(
     return { ok: false, message: `${targetName} is not configured as an active stage.` };
   if (application.current_stage_id === target.id)
     return { ok: true, message: "Applicant is already in this stage." };
-
-  const nextApplication = {
-    current_stage_id: target.id,
-    application_status: column === "hired" ? "hired" : "in_progress",
-    hired_at: column === "hired" ? new Date().toISOString() : null,
-  };
-  const { error: updateError } = await ctx.db
-    .from("job_applications")
-    .update(nextApplication)
-    .eq("id", applicationId)
-    .eq("organization_id", ctx.organizationId);
-  if (updateError) return { ok: false, message: updateError.message };
-
-  const { error: historyError } = await ctx.db
-    .from("application_stage_history")
-    .insert({
-      job_application_id: applicationId,
-      from_stage_id: application.current_stage_id,
-      to_stage_id: target.id,
-      changed_by: ctx.user.id,
-      reason: "Moved from the HR overview board",
-    });
-  if (historyError) {
-    await ctx.db
-      .from("job_applications")
-      .update({
-        current_stage_id: application.current_stage_id,
-        application_status: application.application_status,
-        hired_at: application.hired_at,
-      })
-      .eq("id", applicationId)
-      .eq("organization_id", ctx.organizationId);
-    return { ok: false, message: historyError.message };
-  }
-
-  await ctx.db.from("audit_logs").insert({
-    organization_id: ctx.organizationId,
-    actor_id: ctx.user.id,
-    action: "stage_change",
-    entity_type: "job_applications",
-    entity_id: applicationId,
-    before_values: { current_stage_id: application.current_stage_id },
-    after_values: nextApplication,
+  return updateApplicationStage({
+    applicationId,
+    stageId: target.id,
+    reason: "Moved from the HR overview board",
   });
-  revalidatePath("/hr/dashboard");
-  revalidatePath("/hr/recruitment/applicants");
-  return { ok: true, message: `Applicant moved to ${target.name}.` };
 }
 
 export async function toggleOnboardingTask(

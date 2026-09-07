@@ -1,14 +1,33 @@
 "use server";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient, isAdminConfigured } from "@/lib/supabase/admin";
 
 export async function signIn(formData: FormData) {
   const supabase = await createClient();
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) redirect(`/login?error=${encodeURIComponent(error.message)}`);
-  redirect("/hr/dashboard");
+
+  let isEmployee = data.user?.user_metadata?.account_type === "temporary_employee";
+  if (!isEmployee && data.user && isAdminConfigured()) {
+    const admin = createAdminClient();
+    const { data: lifecycle } = await admin
+      .from("employee_account_lifecycle")
+      .select("id")
+      .eq("user_id", data.user.id)
+      .maybeSingle();
+    isEmployee = Boolean(lifecycle);
+  }
+
+  const destination = isEmployee ? "/employee/onboarding" : "/hr/dashboard";
+  const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (assurance?.currentLevel !== "aal2") {
+    const mfaPath = assurance?.nextLevel === "aal2" ? "/mfa/verify" : "/mfa/setup";
+    redirect(`${mfaPath}?next=${encodeURIComponent(destination)}`);
+  }
+  redirect(destination);
 }
 
 export async function signUp(formData: FormData) {

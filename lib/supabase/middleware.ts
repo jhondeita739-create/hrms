@@ -26,14 +26,49 @@ export async function updateSession(request: NextRequest) {
   const isAuthPage = request.nextUrl.pathname.startsWith("/login");
   const isPublicPage =
     request.nextUrl.pathname === "/" ||
-    request.nextUrl.pathname.startsWith("/careers");
+    request.nextUrl.pathname.startsWith("/careers") ||
+    request.nextUrl.pathname.startsWith("/auth/callback");
   if (!user && !isAuthPage && !isPublicPage) {
     const destination = request.nextUrl.clone();
     destination.pathname = "/login";
     destination.searchParams.set("next", request.nextUrl.pathname);
     return NextResponse.redirect(destination);
   }
-  if (user && isAuthPage)
-    return NextResponse.redirect(new URL("/hr/dashboard", request.url));
+  if (user && isAuthPage) {
+    const destination =
+      user.user_metadata?.account_type === "temporary_employee"
+        ? "/employee/onboarding"
+        : "/hr/dashboard";
+    const { data: assurance } =
+      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (assurance?.currentLevel !== "aal2") {
+      const mfaPath =
+        assurance?.nextLevel === "aal2" ? "/mfa/verify" : "/mfa/setup";
+      const mfaUrl = new URL(mfaPath, request.url);
+      mfaUrl.searchParams.set("next", destination);
+      return NextResponse.redirect(mfaUrl);
+    }
+    return NextResponse.redirect(new URL(destination, request.url));
+  }
+
+  const isProtectedWorkspace =
+    request.nextUrl.pathname.startsWith("/hr") ||
+    request.nextUrl.pathname.startsWith("/employee");
+  if (user && isProtectedWorkspace) {
+    const { data: assurance } =
+      await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (assurance?.currentLevel !== "aal2") {
+      const mfaPath =
+        assurance?.nextLevel === "aal2" ? "/mfa/verify" : "/mfa/setup";
+      const destination = request.nextUrl.clone();
+      destination.pathname = mfaPath;
+      destination.search = "";
+      destination.searchParams.set(
+        "next",
+        `${request.nextUrl.pathname}${request.nextUrl.search}`,
+      );
+      return NextResponse.redirect(destination);
+    }
+  }
   return response;
 }

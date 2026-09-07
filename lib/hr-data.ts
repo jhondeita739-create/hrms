@@ -34,20 +34,32 @@ export async function getResource(
     const { data, error } = await db
       .from("applicants")
       .select(
-        "id,applicant_number,first_name,middle_name,last_name,email,phone,current_job_title,current_employer,years_experience,source,status,created_at,job_applications(rating,recruitment_stages(name))",
+        "id,applicant_number,first_name,middle_name,last_name,email,phone,current_job_title,current_employer,years_experience,source,status,created_at,job_applications(application_status,applied_at,rating,recruitment_stages(name),applicant_ai_assessments(score,recommendation))",
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return (data as Raw[]).map((r) => {
       const apps = r.job_applications as Raw[] | undefined;
-      const app = apps?.[0];
+      const app = apps?.sort((a, b) =>
+        String(b.applied_at || "").localeCompare(String(a.applied_at || "")),
+      )[0];
       const stage = app?.recruitment_stages as Raw | undefined;
+      const assessmentValue = app?.applicant_ai_assessments as
+        | Raw
+        | Raw[]
+        | undefined;
+      const assessment = Array.isArray(assessmentValue)
+        ? assessmentValue[0]
+        : assessmentValue;
       return {
         ...r,
         name: name(r),
         stage: String(stage?.name || "No application"),
+        application_status: String(app?.application_status || "no_application"),
         rating: Number(app?.rating || 0),
+        ai_score: assessment ? Number(assessment.score) : null,
+        ai_recommendation: String(assessment?.recommendation || "not_assessed"),
         job_applications: undefined,
       } as unknown as ResourceRecord;
     });
@@ -76,7 +88,7 @@ export async function getResource(
     const { data, error } = await db
       .from("employees")
       .select(
-        "id,employee_number,first_name,middle_name,last_name,work_email,personal_email,phone,hire_date,employment_status,employment_records(id,department_id,employment_type,work_arrangement,departments(name),positions(title),is_current)",
+        "id,employee_number,first_name,middle_name,last_name,work_email,personal_email,phone,hire_date,employment_status,employment_records!employment_records_employee_id_fkey(id,department_id,employment_type,work_arrangement,departments(name),positions(title),is_current)",
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
@@ -102,7 +114,7 @@ export async function getResource(
     const { data, error } = await db
       .from("employee_onboarding")
       .select(
-        "id,employee_id,start_date,status,employees(first_name,middle_name,last_name,employment_records(departments(name),positions(title),is_current)),profiles(full_name),onboarding_tasks(status)",
+        "id,employee_id,start_date,status,employees(first_name,middle_name,last_name,employment_records!employment_records_employee_id_fkey(departments(name),positions(title),is_current)),profiles!employee_onboarding_owner_id_fkey(full_name),onboarding_tasks(status)",
       )
       .is("deleted_at", null)
       .order("start_date");
@@ -283,6 +295,7 @@ export type ApplicantBoardColumn = "new" | "interviewing" | "hired";
 
 export type ApplicantBoardItem = {
   id: string;
+  applicantId: string;
   name: string;
   role: string;
   department: string;
@@ -344,6 +357,7 @@ export async function getDashboardApplicantBoard(): Promise<
     ];
     return demoData.applicants.map((applicant, index) => ({
       id: applicant.id,
+      applicantId: applicant.id,
       name: String(applicant.name),
       role: String(applicant.current_job_title || "Open role"),
       department: departments[index] || "Unassigned",
@@ -357,7 +371,7 @@ export async function getDashboardApplicantBoard(): Promise<
   const { data, error } = await db
     .from("job_applications")
     .select(
-      "id,rating,applied_at,application_status,applicants(first_name,middle_name,last_name,current_job_title),job_vacancies(title,departments(name)),recruitment_stages(name),application_stage_history(changed_at)",
+      "id,rating,applied_at,application_status,applicants(id,first_name,middle_name,last_name,current_job_title),job_vacancies(title,departments(name)),recruitment_stages(name),application_stage_history(changed_at)",
     )
     .not("application_status", "in", "(rejected,withdrawn)")
     .order("applied_at", { ascending: false })
@@ -375,6 +389,7 @@ export async function getDashboardApplicantBoard(): Promise<
     );
     return {
       id: String(row.id),
+      applicantId: String(applicant.id),
       name: name(applicant),
       role: String(vacancy?.title || applicant?.current_job_title || "Open role"),
       department: String((vacancy?.departments as Raw)?.name || "Unassigned"),
@@ -406,7 +421,7 @@ export async function getDashboardOnboarding(): Promise<DashboardOnboarding> {
   const { data, error } = await db
     .from("employee_onboarding")
     .select(
-      "id,start_date,employees(first_name,middle_name,last_name,employment_records(positions(title),is_current)),onboarding_tasks(id,title,category,status,due_date,created_at)",
+      "id,start_date,employees(first_name,middle_name,last_name,employment_records!employment_records_employee_id_fkey(positions(title),is_current)),onboarding_tasks(id,title,category,status,due_date,created_at)",
     )
     .in("status", ["not_started", "in_progress", "ready"])
     .is("deleted_at", null)

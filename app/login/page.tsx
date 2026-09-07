@@ -1,6 +1,9 @@
-import { ArrowRight, CheckCircle2, LockKeyhole } from "lucide-react";
-import { signIn, signUp } from "./actions";
+import Image from "next/image";
+import { ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
 import { isSupabaseConfigured } from "@/lib/supabase/server";
+import { PasswordInput } from "@/components/password-input";
+import payrollLogo from "../../Payroll-logo-removebg.png";
+import { signIn, signUp } from "./actions";
 
 export default async function LoginPage({
   searchParams,
@@ -9,170 +12,98 @@ export default async function LoginPage({
 }) {
   const params = await searchParams;
   const configured = isSupabaseConfigured();
+
   return (
-    <main className="grid min-h-screen bg-white lg:grid-cols-[1.05fr_.95fr]">
-      <section className="relative hidden overflow-hidden bg-brand-900 p-14 text-white lg:flex lg:flex-col lg:justify-between">
-        <div className="absolute -right-48 -top-56 h-[560px] w-[560px] rounded-full border border-white/10" />
-        <div className="absolute -right-24 -top-28 h-[340px] w-[340px] rounded-full border border-white/10" />
-        <div className="relative flex items-center gap-3 text-sm font-semibold tracking-wide">
-          <span className="grid h-9 w-9 place-items-center rounded-lg bg-white text-brand-900">
-            H
-          </span>{" "}
-          HRMS
+    <main className="relative grid min-h-screen place-items-center overflow-hidden bg-slate-50 px-4 py-10 sm:px-6">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-gradient-to-b from-brand-50/80 to-transparent" />
+
+      <section className="relative w-full max-w-[440px] rounded-3xl border border-slate-200/80 bg-white p-6 shadow-[0_24px_70px_rgba(15,23,42,0.08)] sm:p-8">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-6">
+          <Image
+            src={payrollLogo}
+            alt="Priority Handling Logistics, Inc."
+            priority
+            className="h-14 w-auto object-contain"
+          />
+          <span className="rounded-full bg-brand-50 px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-[.14em] text-brand-700">
+            HRMS
+          </span>
         </div>
-        <div className="relative max-w-xl">
-          <p className="mb-5 text-xs font-semibold uppercase tracking-[.22em] text-blue-200">
-            People operations, connected
-          </p>
-          <h1 className="text-5xl font-medium leading-[1.08] tracking-[-.04em]">
-            Every person. Every move. One trusted record.
-          </h1>
-          <p className="mt-6 max-w-lg text-lg leading-8 text-blue-50/75">
-            Run recruiting, onboarding, employee records, and everyday HR work
-            without losing the story between them.
-          </p>
-        </div>
-        <div className="relative flex gap-7 text-sm text-blue-50/70">
-          {["Private by design", "Audit ready", "Built for real workflows"].map(
-            (item) => (
-              <span className="flex items-center gap-2" key={item}>
-                <CheckCircle2 className="h-4 w-4 text-blue-300" />
-                {item}
-              </span>
-            ),
-          )}
-        </div>
-      </section>
-      <section className="flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-[420px]">
-          <div className="mb-9 lg:hidden">
-            <span className="grid h-10 w-10 place-items-center rounded-lg bg-brand-900 font-semibold text-white">
-              H
-            </span>
+
+        <div className="pt-7">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[.14em] text-brand-600">
+            <ShieldCheck className="h-4 w-4" /> Secure access
           </div>
-          <p className="text-sm font-medium text-brand-600">Welcome back</p>
-          <h2 className="mt-2 text-3xl font-semibold tracking-[-.03em]">
+          <h1 className="mt-3 text-3xl font-extrabold tracking-[-.04em] text-slate-950">
             Sign in to HRMS
-          </h2>
+          </h1>
           <p className="mt-3 text-sm leading-6 text-slate-500">
-            Access your organization’s secure HR workspace.
+            Use your work account to access the secure HR workspace.
           </p>
+
           {!configured && (
-            <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-              <strong>Supabase setup needed.</strong> Copy{" "}
-              <code>.env.example</code> to <code>.env.local</code>, add your
-              project credentials, then run the migration.
+            <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+              <strong>Supabase setup needed.</strong> Copy <code>.env.example</code> to{" "}
+              <code>.env.local</code>, add your project credentials, then run the migrations.
             </div>
           )}
           {params.error && (
-            <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <div role="alert" className="mt-6 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-medium text-rose-700">
               {params.error}
             </div>
           )}
           {params.message && (
-            <div className="mt-6 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+            <div role="status" className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-700">
               {params.message}
             </div>
           )}
-          <form action={signIn} className="mt-8 space-y-5">
+
+          <form action={signIn} className="mt-7 space-y-5">
             <div>
-              <label className="field-label" htmlFor="email">
-                Work email
-              </label>
-              <input
-                className="field-control"
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                placeholder="you@company.com"
-              />
+              <label className="field-label" htmlFor="email">Work email</label>
+              <input className="field-control" id="email" name="email" type="email" autoComplete="email" required placeholder="you@company.com" />
             </div>
             <div>
-              <div className="flex justify-between">
-                <label className="field-label" htmlFor="password">
-                  Password
-                </label>
-                <button
-                  className="mb-1.5 text-xs font-medium text-brand-600"
-                  type="button"
-                >
-                  Forgot password?
-                </button>
-              </div>
-              <input
-                className="field-control"
-                id="password"
-                name="password"
-                type="password"
-                minLength={8}
-                autoComplete="current-password"
-                required
-              />
+              <label className="field-label" htmlFor="password">Password</label>
+              <PasswordInput id="password" autoComplete="current-password" />
             </div>
             <button
               disabled={!configured}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-md bg-brand-900 text-sm font-semibold text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-700 text-sm font-bold text-white shadow-lg shadow-brand-700/15 transition-colors hover:bg-brand-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Sign in <ArrowRight className="h-4 w-4" />
             </button>
           </form>
-          <details className="group mt-5 rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-            <summary className="cursor-pointer list-none text-center text-sm font-medium text-brand-700">
+
+          <details className="group mt-5 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            <summary className="cursor-pointer list-none text-center text-sm font-semibold text-brand-700">
               Set up the first administrator
             </summary>
-            <form
-              action={signUp}
-              className="mt-4 space-y-3 border-t border-slate-200 pt-4"
-            >
+            <form action={signUp} className="mt-4 space-y-3 border-t border-slate-200 pt-4">
               <div>
-                <label className="field-label" htmlFor="full_name">
-                  Full name
-                </label>
-                <input
-                  className="field-control"
-                  id="full_name"
-                  name="full_name"
-                  required
-                />
+                <label className="field-label" htmlFor="full_name">Full name</label>
+                <input className="field-control" id="full_name" name="full_name" required />
               </div>
               <div>
-                <label className="field-label" htmlFor="signup_email">
-                  Work email
-                </label>
-                <input
-                  className="field-control"
-                  id="signup_email"
-                  name="email"
-                  type="email"
-                  required
-                />
+                <label className="field-label" htmlFor="signup_email">Work email</label>
+                <input className="field-control" id="signup_email" name="email" type="email" autoComplete="email" required />
               </div>
               <div>
-                <label className="field-label" htmlFor="signup_password">
-                  Password
-                </label>
-                <input
-                  className="field-control"
-                  id="signup_password"
-                  name="password"
-                  type="password"
-                  minLength={8}
-                  required
-                />
+                <label className="field-label" htmlFor="signup_password">Password</label>
+                <PasswordInput id="signup_password" autoComplete="new-password" />
               </div>
               <button
                 disabled={!configured}
-                className="h-10 w-full rounded-md border border-brand-600 bg-white text-sm font-semibold text-brand-700 disabled:opacity-50"
+                className="h-11 w-full rounded-xl border border-brand-200 bg-white text-sm font-bold text-brand-700 transition-colors hover:bg-brand-50 disabled:opacity-50"
               >
                 Create administrator
               </button>
             </form>
           </details>
-          <div className="mt-8 flex items-center justify-center gap-2 text-xs text-slate-400">
-            <LockKeyhole className="h-3.5 w-3.5" />
-            Protected by Supabase Auth and row-level security
+
+          <div className="mt-7 flex items-center justify-center gap-2 text-center text-xs text-slate-400">
+            <LockKeyhole className="h-3.5 w-3.5 shrink-0" />
+            Protected by Supabase Auth, MFA, and row-level security
           </div>
         </div>
       </section>

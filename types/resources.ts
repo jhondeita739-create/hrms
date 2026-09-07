@@ -23,4 +23,5 @@ export type ResourceConfig = {
   searchPlaceholder: string;
   columns: ResourceColumn[];
   fields: FieldDefinition[];
+  defaultSort?: { key: string; desc?: boolean };
 };

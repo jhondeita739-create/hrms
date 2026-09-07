@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -21,6 +22,7 @@ import {
   ChevronRight,
   Copy,
   Download,
+  Eye,
   Pencil,
   Plus,
   Search,
@@ -47,21 +49,37 @@ const statusTone: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700 ring-emerald-600/15",
   open: "bg-emerald-50 text-emerald-700 ring-emerald-600/15",
   verified: "bg-emerald-50 text-emerald-700 ring-emerald-600/15",
+  hired: "bg-emerald-50 text-emerald-700 ring-emerald-600/15",
+  strong_match: "bg-emerald-50 text-emerald-700 ring-emerald-600/15",
   ready: "bg-emerald-50 text-emerald-700 ring-emerald-600/15",
   offer: "bg-orange-50 text-orange-700 ring-orange-600/15",
   in_progress: "bg-blue-50 text-blue-700 ring-blue-600/15",
   pending: "bg-amber-50 text-amber-700 ring-amber-600/15",
   under_review: "bg-amber-50 text-amber-700 ring-amber-600/15",
+  manual_review: "bg-amber-50 text-amber-700 ring-amber-600/15",
   paused: "bg-amber-50 text-amber-700 ring-amber-600/15",
   not_started: "bg-slate-100 text-slate-600 ring-slate-500/15",
   draft: "bg-slate-100 text-slate-600 ring-slate-500/15",
   confidential: "bg-violet-50 text-violet-700 ring-violet-600/15",
+  potential_match: "bg-blue-50 text-blue-700 ring-blue-600/15",
+  rejected: "bg-red-50 text-red-700 ring-red-600/15",
+  withdrawn: "bg-red-50 text-red-700 ring-red-600/15",
+  not_assessed: "bg-slate-100 text-slate-500 ring-slate-500/15",
   archived: "bg-slate-100 text-slate-500 ring-slate-500/15",
 };
 const label = (value: string | number | null | undefined) =>
   String(value ?? "—")
     .replaceAll("_", " ")
     .replace(/\b\w/g, (x) => x.toUpperCase());
+
+const recordStatus = (record: ResourceRecord) =>
+  String(
+    record.application_status ||
+      record.employment_status ||
+      record.verification_status ||
+      record.status ||
+      "",
+  );
 
 function displayValue(record: ResourceRecord, column: ResourceColumn) {
   const value = record[column.key];
@@ -112,7 +130,11 @@ export function ResourceWorkspace({
     null,
   );
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [sorting, setSorting] = useState<SortingState>(() =>
+    config.defaultSort
+      ? [{ id: config.defaultSort.key, desc: config.defaultSort.desc ?? false }]
+      : [],
+  );
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [showControls, setShowControls] = useState(false);
@@ -132,11 +154,7 @@ export function ResourceWorkspace({
       Array.from(
         new Set(
           records
-            .map((r) =>
-              String(
-                r.status || r.employment_status || r.verification_status || "",
-              ),
-            )
+            .map(recordStatus)
             .filter(Boolean),
         ),
       ),
@@ -147,9 +165,7 @@ export function ResourceWorkspace({
       records.filter(
         (row) =>
           status === "all" ||
-          String(
-            row.status || row.employment_status || row.verification_status,
-          ) === status,
+          recordStatus(row) === status,
       ),
     [records, status],
   );
@@ -358,6 +374,16 @@ export function ResourceWorkspace({
         header: "",
         cell: ({ row }) => (
           <div className="flex justify-end gap-1">
+            {config.entity === "applicants" && (
+              <Link
+                href={`/hr/recruitment/applicants/${row.original.id}`}
+                aria-label="Review applicant"
+                title="Review application"
+                className="grid h-9 w-9 place-items-center rounded-xl text-slate-400 transition-colors hover:bg-violet-50 hover:text-violet-700"
+              >
+                <Eye className="h-4 w-4" />
+              </Link>
+            )}
             <button
               type="button"
               aria-label={`Edit ${config.singular.toLowerCase()}`}
@@ -674,6 +700,15 @@ export function ResourceWorkspace({
                 ))}
               </dl>
               <div className="mt-3 flex items-center justify-end gap-1">
+                {config.entity === "applicants" && (
+                  <Link
+                    href={`/hr/recruitment/applicants/${row.original.id}`}
+                    aria-label="Review applicant"
+                    className="grid h-10 w-10 place-items-center rounded-xl text-slate-500 hover:bg-violet-50 hover:text-violet-700"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Link>
+                )}
                 <button
                   type="button"
                   aria-label={`Edit ${config.singular.toLowerCase()}`}

@@ -89,6 +89,12 @@ export function DashboardWorkflow({
       | undefined;
     const applicant = applicants.find((item) => item.id === applicationId);
     if (!applicant || !nextColumn || applicant.column === nextColumn) return;
+    if (nextColumn === "hired") {
+      setMessage(
+        `Open ${applicant.name}'s profile and use Hire & onboard to configure the temporary account.`,
+      );
+      return;
+    }
 
     const previousColumn = applicant.column;
     setMessage(null);
@@ -171,7 +177,7 @@ export function DashboardWorkflow({
               </span>
             </div>
             <p className="mt-1.5 text-sm text-slate-500">
-              Drag applicants between stages to update their recruitment status.
+              Drag between active stages. Complete hiring from the applicant profile.
             </p>
           </div>
           <Link
@@ -311,9 +317,12 @@ function ApplicantCard({ applicant }: { applicant: ApplicantBoardItem }) {
           {initials(applicant.name)}
         </span>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-bold text-slate-900">
+          <Link
+            href={`/hr/recruitment/applicants/${applicant.applicantId}`}
+            className="block truncate text-sm font-bold text-slate-900 hover:text-brand-700"
+          >
             {applicant.name}
-          </h3>
+          </Link>
           <p className="mt-0.5 truncate text-xs font-medium text-slate-500">
             {applicant.role}
           </p>
