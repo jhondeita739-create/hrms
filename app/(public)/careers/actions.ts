@@ -2,6 +2,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import "pdf-parse/worker";
 import { PDFParse } from "pdf-parse";
 import { z } from "zod";
 import { createAdminClient, isAdminConfigured } from "@/lib/supabase/admin";
@@ -18,8 +19,7 @@ const applicationSchema = z.object({
     .string()
     .trim()
     .min(3, "Enter your complete name")
-    .max(160)
-    .refine((value) => value.split(/\s+/).length >= 2, "Enter your first and last name"),
+    .max(160),
   email: z.email("Enter a valid email address"),
   phone: z.string().trim().regex(/^\d{7,15}$/, "Use 7 to 15 numbers only"),
   location: z.string().trim().min(2, "Location is required").max(160),
@@ -76,8 +76,15 @@ async function validateResumePdf(file: File) {
     const wordCount = text.split(/\s+/).filter(Boolean).length;
     if (wordCount < 40 || matchedSections < 2)
       return "This PDF does not appear to contain a readable resume. Upload a searchable PDF with sections such as experience, education, or skills.";
-  } catch {
-    return "The PDF could not be read. Upload an unencrypted, searchable resume PDF.";
+  } catch (error) {
+    const parserMessage =
+      error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    console.error("Resume PDF parsing failed", parserMessage);
+    if (/password|encrypted/i.test(parserMessage))
+      return "This PDF is password-protected. Upload an unlocked, searchable resume PDF.";
+    if (/invalid pdf|invalid.*structure|corrupt|format error/i.test(parserMessage))
+      return "This PDF appears damaged or invalid. Export the resume as a new PDF and try again.";
+    return "The PDF could not be processed. Export it as a new searchable PDF and try again.";
   } finally {
     await parser.destroy();
   }
