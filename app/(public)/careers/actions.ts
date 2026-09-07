@@ -12,7 +12,6 @@ export type ApplicationState = {
   reference?: string;
   fieldErrors?: Record<string, string>;
 };
-export const initialApplicationState: ApplicationState = { status: "idle" };
 const applicationSchema = z.object({
   vacancy_id: z.string().min(1),
   full_name: z
@@ -300,10 +299,6 @@ export type ProfileCompletionState = {
   fieldErrors?: Record<string, string>;
 };
 
-export const initialProfileCompletionState: ProfileCompletionState = {
-  status: "idle",
-};
-
 const profileCompletionSchema = z
   .object({
     token: z.string().regex(/^[a-f0-9]{64}$/i, "The secure profile link is invalid"),
@@ -404,7 +399,6 @@ export type TrackingState = {
     }>;
   };
 };
-export const initialTrackingState: TrackingState = { status: "idle" };
 export async function trackApplication(
   _: TrackingState,
   formData: FormData,

@@ -5,8 +5,10 @@ import { CheckCircle2, GraduationCap, LoaderCircle, Send, UserRoundCheck } from 
 import { useFormStatus } from "react-dom";
 import {
   completeScreenedApplicantProfile,
-  initialProfileCompletionState,
+  type ProfileCompletionState,
 } from "@/app/(public)/careers/actions";
+
+const initialProfileCompletionState: ProfileCompletionState = { status: "idle" };
 
 export function ApplicantProfileCompletionForm({ token }: { token: string }) {
   const [state, action] = useActionState(

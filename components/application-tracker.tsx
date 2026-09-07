@@ -9,10 +9,12 @@ import {
 } from "lucide-react";
 import { useFormStatus } from "react-dom";
 import {
-  initialTrackingState,
   trackApplication,
+  type TrackingState,
 } from "@/app/(public)/careers/actions";
 import { formatDate } from "@/lib/utils";
+
+const initialTrackingState: TrackingState = { status: "idle" };
 
 export function ApplicationTracker() {
   const [state, action] = useActionState(

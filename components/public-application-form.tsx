@@ -12,9 +12,11 @@ import {
 } from "lucide-react";
 import { useFormStatus } from "react-dom";
 import {
-  initialApplicationState,
   submitPublicApplication,
+  type ApplicationState,
 } from "@/app/(public)/careers/actions";
+
+const initialApplicationState: ApplicationState = { status: "idle" };
 
 export function PublicApplicationForm({
   vacancyId,
