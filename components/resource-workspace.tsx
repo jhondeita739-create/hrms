@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -27,6 +28,7 @@ import {
   Plus,
   Search,
   SlidersHorizontal,
+  Trash2,
   X,
 } from "lucide-react";
 import { z } from "zod";
@@ -34,6 +36,8 @@ import {
   archiveRecord,
   createRecord,
   getDocumentDownloadUrl,
+  permanentlyDeleteApplicant,
+  permanentlyDeleteEmployee,
   updateRecord,
   uploadEmployeeDocument,
 } from "@/app/actions/resources";
@@ -119,13 +123,18 @@ function schemaFor(fields: FieldDefinition[]) {
 export function ResourceWorkspace({
   config,
   records,
+  allowPermanentDelete = false,
 }: {
   config: ResourceConfig;
   records: ResourceRecord[];
+  allowPermanentDelete?: boolean;
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ResourceRecord | null>(null);
   const [deleting, setDeleting] = useState<ResourceRecord | null>(null);
+  const [purging, setPurging] = useState<ResourceRecord | null>(null);
+  const [purgeConfirmation, setPurgeConfirmation] = useState("");
   const [notice, setNotice] = useState<{ text: string; ok: boolean } | null>(
     null,
   );
@@ -247,6 +256,20 @@ export function ResourceWorkspace({
       const result = await archiveRecord(config.entity, deleting.id);
       setDeleting(null);
       setNotice({ text: result.message, ok: result.ok });
+    });
+  }
+  function purgeRecord() {
+    if (!purging) return;
+    startTransition(async () => {
+      const result = config.entity === "applicants"
+        ? await permanentlyDeleteApplicant(purging.id, purgeConfirmation)
+        : await permanentlyDeleteEmployee(purging.id, purgeConfirmation);
+      setNotice({ text: result.message, ok: result.ok });
+      if (result.ok) {
+        setPurging(null);
+        setPurgeConfirmation("");
+        router.refresh();
+      }
     });
   }
   async function exportXlsx() {
@@ -407,6 +430,20 @@ export function ResourceWorkspace({
             >
               <Archive className="h-4 w-4" />
             </button>
+            {(config.entity === "employees" || config.entity === "applicants") && allowPermanentDelete && (
+              <button
+                type="button"
+                aria-label={`Permanently delete ${config.singular.toLowerCase()}`}
+                title="Permanently delete"
+                onClick={() => {
+                  setPurging(row.original);
+                  setPurgeConfirmation("");
+                }}
+                className="grid h-9 w-9 place-items-center rounded-xl text-rose-500 transition-colors hover:bg-rose-600 hover:text-white"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
             <button
               type="button"
               aria-label={
@@ -745,6 +782,19 @@ export function ResourceWorkspace({
                 >
                   <Archive className="h-4 w-4" />
                 </button>
+                {(config.entity === "employees" || config.entity === "applicants") && allowPermanentDelete && (
+                  <button
+                    type="button"
+                    aria-label={`Permanently delete ${config.singular.toLowerCase()}`}
+                    onClick={() => {
+                      setPurging(row.original);
+                      setPurgeConfirmation("");
+                    }}
+                    className="grid h-10 w-10 place-items-center rounded-xl text-rose-500 hover:bg-rose-600 hover:text-white"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </article>
           ))}
@@ -966,6 +1016,75 @@ export function ResourceWorkspace({
                 className="h-10 rounded-xl bg-red-600 px-4 text-sm font-bold text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
               >
                 Archive record
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {purging && (
+        <div className="fixed inset-0 z-[90] grid place-items-center px-4">
+          <button
+            type="button"
+            aria-label="Cancel permanent deletion"
+            className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
+            onClick={() => {
+              setPurging(null);
+              setPurgeConfirmation("");
+            }}
+          />
+          <div className="relative w-full max-w-lg rounded-3xl bg-white p-7 shadow-2xl">
+            <span className="grid h-11 w-11 place-items-center rounded-full bg-rose-100 text-rose-700">
+              <Trash2 className="h-5 w-5" />
+            </span>
+            <h2 className="mt-4 text-xl font-extrabold text-slate-950">
+              Permanently delete this {config.singular.toLowerCase()}?
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              {config.entity === "employees"
+                ? "This permanently removes the employee login, profile image, documents and files, requirements, training, onboarding, HR requests, employment records, original applicant, resume, applications, interviews, offers, notifications, and related audit history from Supabase."
+                : "This permanently removes the applicant, resume and files, applications, interviews, offers, notifications, and related audit history from Supabase. Applicants linked to an employee must be deleted from Employee records instead."}
+            </p>
+            <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-rose-700">
+                Irreversible action
+              </p>
+              <p className="mt-2 text-sm text-rose-900">
+                Type {config.singular.toLowerCase()} number{" "}
+                <strong>{String(config.entity === "employees" ? purging.employee_number : purging.applicant_number)}</strong>{" "}
+                to confirm.
+              </p>
+            </div>
+            <label className="mt-5 block text-xs font-bold text-slate-700">
+              {config.singular} number
+              <input
+                autoComplete="off"
+                value={purgeConfirmation}
+                onChange={(event) => setPurgeConfirmation(event.target.value)}
+                className="field-control mt-2"
+                placeholder={String(config.entity === "employees" ? purging.employee_number : purging.applicant_number)}
+              />
+            </label>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setPurging(null);
+                  setPurgeConfirmation("");
+                }}
+                className="h-11 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={
+                  pending ||
+                  purgeConfirmation.trim() !== String(config.entity === "employees" ? purging.employee_number : purging.applicant_number)
+                }
+                onClick={purgeRecord}
+                className="h-11 rounded-xl bg-rose-600 px-5 text-sm font-bold text-white shadow-sm hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {pending ? "Deleting permanentlyâ€¦" : "Delete permanently"}
               </button>
             </div>
           </div>

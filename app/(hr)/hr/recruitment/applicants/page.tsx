@@ -1,15 +1,22 @@
 import type { Metadata } from "next";
 import { ResourceWorkspace } from "@/components/resource-workspace";
 import { getOptions, getResource } from "@/lib/hr-data";
+import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 import type { ResourceConfig } from "@/types/resources";
 export const metadata:Metadata={title:"Applicants"};
 export default async function ApplicantsPage(){
-  const [records,vacancies]=await Promise.all([getResource("applicants"),getOptions("vacancies")]);
+  const permanentDeletePermission = isSupabaseConfigured()
+    ? createClient().then(async (db) => {
+        const { data } = await db.rpc("has_permission", { permission_key: "*" });
+        return Boolean(data);
+      })
+    : Promise.resolve(false);
+  const [records,vacancies,canPermanentlyDelete]=await Promise.all([getResource("applicants"),getOptions("vacancies"),permanentDeletePermission]);
   const config:ResourceConfig={entity:"applicants",title:"Applicants",description:"Manage candidates, qualifications, applications, and recruitment progress. Every active candidate remains visible regardless of AI guidance.",singular:"Applicant",addLabel:"Add applicant",searchPlaceholder:"Search by name, email, phone, or applicant ID…",defaultSort:{key:"ai_score",desc:true},columns:[
-    {key:"name",label:"Applicant",format:"person"},{key:"current_job_title",label:"Current role"},{key:"stage",label:"Recruitment stage"},{key:"application_status",label:"Decision",format:"status"},{key:"ai_score",label:"AI match"},{key:"ai_recommendation",label:"AI guidance",format:"status"},{key:"source",label:"Source"},{key:"created_at",label:"Added",format:"date"}],fields:[
+    {key:"name",label:"Applicant",format:"person"},{key:"role",label:"Current / applied role"},{key:"stage",label:"Recruitment stage"},{key:"application_status",label:"Decision",format:"status"},{key:"ai_score",label:"AI match"},{key:"ai_recommendation",label:"AI guidance",format:"status"},{key:"source",label:"Source"},{key:"created_at",label:"Added",format:"date"}],fields:[
     {name:"first_name",label:"First name",type:"text",required:true,section:"Personal information"},{name:"last_name",label:"Last name",type:"text",required:true,section:"Personal information"},
     {name:"email",label:"Email",type:"email",required:true,section:"Contact information"},{name:"phone",label:"Phone",type:"tel",required:true,section:"Contact information"},{name:"alternative_phone",label:"Alternative phone",type:"tel",section:"Contact information"},
     {name:"current_job_title",label:"Current job title",type:"text",section:"Professional information"},{name:"current_employer",label:"Current employer",type:"text",section:"Professional information"},{name:"years_experience",label:"Years of experience",type:"number",section:"Professional information"},{name:"expected_salary",label:"Expected salary",type:"number",section:"Professional information"},{name:"availability_date",label:"Availability date",type:"date",section:"Professional information"},
     {name:"job_vacancy_id",label:"Vacancy",type:"select",options:vacancies,section:"Recruitment"},{name:"source",label:"Source",type:"select",required:true,options:["Direct","LinkedIn","Careers page","Employee referral","Job board","Agency"].map(x=>({label:x,value:x})),section:"Recruitment"},{name:"status",label:"Profile status",type:"select",required:true,options:[{label:"Active",value:"active"},{label:"Hired",value:"hired"},{label:"Withdrawn",value:"withdrawn"}],section:"Recruitment"}
-  ]}; return <ResourceWorkspace config={config} records={records}/>;
+  ]}; return <ResourceWorkspace config={config} records={records} allowPermanentDelete={canPermanentlyDelete}/>;
 }

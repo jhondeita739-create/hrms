@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
+  ArrowUpRight,
   BriefcaseBusiness,
   CircleUserRound,
   UserRoundPlus,
@@ -38,6 +39,7 @@ export default async function DashboardPage() {
       change: "+18 this quarter",
       icon: Users,
       tone: "text-emerald-600 bg-emerald-100",
+      href: "/hr/employees",
     },
     {
       label: "Active applicants",
@@ -45,6 +47,7 @@ export default async function DashboardPage() {
       change: "24 new this week",
       icon: CircleUserRound,
       tone: "text-blue-600 bg-blue-100",
+      href: "/hr/recruitment/applicants",
     },
     {
       label: "Open positions",
@@ -52,6 +55,7 @@ export default async function DashboardPage() {
       change: "5 closing soon",
       icon: BriefcaseBusiness,
       tone: "text-violet-600 bg-violet-100",
+      href: "/hr/recruitment/vacancies",
     },
     {
       label: "Onboarding",
@@ -59,6 +63,7 @@ export default async function DashboardPage() {
       change: "3 start next week",
       icon: UserRoundPlus,
       tone: "text-amber-600 bg-amber-100",
+      href: "/hr/onboarding",
     },
   ];
 
@@ -94,9 +99,11 @@ export default async function DashboardPage() {
       {/* Metrics Section */}
       <section className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
-          <div
+          <Link
             key={card.label}
-            className="group rounded-3xl bg-white p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)]"
+            href={card.href}
+            aria-label={`View ${card.label.toLowerCase()}`}
+            className="group rounded-3xl bg-white p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] outline-none transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_12px_40px_rgb(0,0,0,0.08)] focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 active:translate-y-0"
           >
             <div className="flex items-center justify-between">
               <span
@@ -107,8 +114,8 @@ export default async function DashboardPage() {
               >
                 <card.icon className="h-5 w-5" />
               </span>
-              <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-500">
-                Live
+              <span className="flex items-center gap-1 rounded-full bg-slate-50 px-3 py-1 text-xs font-bold text-slate-500 transition-colors group-hover:bg-brand-50 group-hover:text-brand-700">
+                Live <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
               </span>
             </div>
             <div className="mt-6 text-4xl font-black tracking-tight text-slate-900">
@@ -118,7 +125,7 @@ export default async function DashboardPage() {
             <div className="mt-4 border-t border-slate-100 pt-4 text-xs font-bold text-brand-600">
               {card.change}
             </div>
-          </div>
+          </Link>
         ))}
       </section>
 

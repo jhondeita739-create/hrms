@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { createAdminClient, isAdminConfigured } from "@/lib/supabase/admin";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 import type { EntityKey } from "@/types/resources";
 
@@ -144,6 +145,140 @@ export async function archiveRecord(entity:EntityKey,id:string):Promise<Mutation
   if(error) return {ok:false,message:error.message};
   await ctx.db.from("audit_logs").insert({organization_id:ctx.organizationId,actor_id:ctx.user.id,action:"archive",entity_type:entity,entity_id:id,after_values:archive});
   revalidatePath(pathByEntity[entity]); revalidatePath("/hr/dashboard"); return {ok:true,message:"Record archived. Its history remains available in the audit log."};
+}
+
+type EmployeePurgePayload = {
+  auth_user_id?: string | null;
+  avatar_path?: string | null;
+  document_paths?: string[] | null;
+  applicant_document_paths?: string[] | null;
+  contract_paths?: string[] | null;
+};
+
+export async function permanentlyDeleteEmployee(
+  employeeId: string,
+  confirmation: string,
+): Promise<MutationResult> {
+  const ctx = await context("*");
+  if (!ctx || !isAdminConfigured())
+    return { ok: false, message: "Sign in with MFA as a super administrator to permanently delete an employee." };
+  if (!z.string().uuid().safeParse(employeeId).success)
+    return { ok: false, message: "Invalid employee identifier." };
+  const employeeNumber = confirmation.trim();
+  if (!employeeNumber)
+    return { ok: false, message: "Enter the employee number to confirm permanent deletion." };
+
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("purge_employee_and_applicant_data", {
+    employee_uuid: employeeId,
+    actor_user_uuid: ctx.user.id,
+    confirmation_text: employeeNumber,
+  });
+  if (error) return { ok: false, message: error.message };
+
+  const payload = (data || {}) as EmployeePurgePayload;
+  const cleanupWarnings: string[] = [];
+  const documentPaths = Array.from(new Set(payload.document_paths || [])).filter(Boolean);
+  for (let index = 0; index < documentPaths.length; index += 100) {
+    const { error: storageError } = await admin.storage
+      .from("employee-documents")
+      .remove(documentPaths.slice(index, index + 100));
+    if (storageError) cleanupWarnings.push(`document files: ${storageError.message}`);
+  }
+  const applicantDocumentPaths = Array.from(
+    new Set(payload.applicant_document_paths || []),
+  ).filter(Boolean);
+  for (let index = 0; index < applicantDocumentPaths.length; index += 100) {
+    const { error: storageError } = await admin.storage
+      .from("applicant-documents")
+      .remove(applicantDocumentPaths.slice(index, index + 100));
+    if (storageError) cleanupWarnings.push(`applicant files: ${storageError.message}`);
+  }
+  const contractPaths = Array.from(new Set(payload.contract_paths || [])).filter(Boolean);
+  for (let index = 0; index < contractPaths.length; index += 100) {
+    const { error: storageError } = await admin.storage
+      .from("contracts")
+      .remove(contractPaths.slice(index, index + 100));
+    if (storageError) cleanupWarnings.push(`contract files: ${storageError.message}`);
+  }
+  if (payload.avatar_path) {
+    const { error: avatarError } = await admin.storage
+      .from("profile-images")
+      .remove([payload.avatar_path]);
+    if (avatarError) cleanupWarnings.push(`profile image: ${avatarError.message}`);
+  }
+  if (payload.auth_user_id) {
+    const { error: authError } = await admin.auth.admin.deleteUser(payload.auth_user_id);
+    if (authError) cleanupWarnings.push(`Auth account: ${authError.message}`);
+  }
+
+  revalidatePath("/hr/employees");
+  revalidatePath("/hr/preboarding");
+  revalidatePath("/hr/onboarding");
+  revalidatePath("/hr/records");
+  revalidatePath("/hr/dashboard");
+  revalidatePath("/hr/recruitment/applicants");
+  return {
+    ok: true,
+    message: cleanupWarnings.length
+      ? `Employee database data was deleted and access was revoked. Cleanup warning: ${cleanupWarnings.join("; ")}`
+      : "Employee, applicant, Auth, Storage, recruitment, and related audit data were permanently deleted.",
+  };
+}
+
+type ApplicantPurgePayload = {
+  applicant_document_paths?: string[] | null;
+  contract_paths?: string[] | null;
+};
+
+export async function permanentlyDeleteApplicant(
+  applicantId: string,
+  confirmation: string,
+): Promise<MutationResult> {
+  const ctx = await context("*");
+  if (!ctx || !isAdminConfigured())
+    return { ok: false, message: "Sign in with MFA as a super administrator to permanently delete an applicant." };
+  if (!z.string().uuid().safeParse(applicantId).success)
+    return { ok: false, message: "Invalid applicant identifier." };
+  const applicantNumber = confirmation.trim();
+  if (!applicantNumber)
+    return { ok: false, message: "Enter the applicant number to confirm permanent deletion." };
+
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("purge_applicant_data", {
+    applicant_uuid: applicantId,
+    actor_user_uuid: ctx.user.id,
+    confirmation_text: applicantNumber,
+  });
+  if (error) return { ok: false, message: error.message };
+
+  const payload = (data || {}) as ApplicantPurgePayload;
+  const cleanupWarnings: string[] = [];
+  const applicantDocumentPaths = Array.from(
+    new Set(payload.applicant_document_paths || []),
+  ).filter(Boolean);
+  for (let index = 0; index < applicantDocumentPaths.length; index += 100) {
+    const { error: storageError } = await admin.storage
+      .from("applicant-documents")
+      .remove(applicantDocumentPaths.slice(index, index + 100));
+    if (storageError) cleanupWarnings.push(`applicant files: ${storageError.message}`);
+  }
+  const contractPaths = Array.from(new Set(payload.contract_paths || [])).filter(Boolean);
+  for (let index = 0; index < contractPaths.length; index += 100) {
+    const { error: storageError } = await admin.storage
+      .from("contracts")
+      .remove(contractPaths.slice(index, index + 100));
+    if (storageError) cleanupWarnings.push(`contract files: ${storageError.message}`);
+  }
+
+  revalidatePath("/hr/recruitment/applicants");
+  revalidatePath("/hr/dashboard");
+  return {
+    ok: true,
+    message: cleanupWarnings.length
+      ? `Applicant database data was permanently deleted. Cleanup warning: ${cleanupWarnings.join("; ")}`
+      : "Applicant, applications, resume, interviews, offers, notifications, Storage, and related audit data were permanently deleted.",
+  };
 }
 
 export async function uploadEmployeeDocument(documentId:string,formData:FormData):Promise<MutationResult>{

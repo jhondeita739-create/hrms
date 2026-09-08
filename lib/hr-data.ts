@@ -35,7 +35,7 @@ export async function getResource(
     const { data, error } = await db
       .from("applicants")
       .select(
-        "id,applicant_number,first_name,middle_name,last_name,email,phone,current_job_title,current_employer,years_experience,source,status,created_at,job_applications(application_status,applied_at,rating,recruitment_stages(name),applicant_ai_assessments(score,recommendation))",
+        "id,applicant_number,first_name,middle_name,last_name,email,phone,current_job_title,current_employer,years_experience,source,status,created_at,job_applications(application_status,applied_at,rating,recruitment_stages(name),job_vacancies(title),applicant_ai_assessments(score,recommendation))",
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
@@ -67,6 +67,7 @@ export async function getResource(
         String(b.applied_at || "").localeCompare(String(a.applied_at || "")),
       )[0];
       const stage = app?.recruitment_stages as Raw | undefined;
+      const vacancy = app?.job_vacancies as Raw | undefined;
       const assessmentValue = app?.applicant_ai_assessments as
         | Raw
         | Raw[]
@@ -77,6 +78,7 @@ export async function getResource(
       return {
         ...r,
         name: name(r),
+        role: String(r.current_job_title || vacancy?.title || "Not provided"),
         avatar_url:
           avatarUrls.get(employeeUserByApplicant.get(String(r.id)) || "") || null,
         stage: String(stage?.name || "No application"),
