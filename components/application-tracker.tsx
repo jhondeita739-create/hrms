@@ -113,12 +113,12 @@ export function ApplicationTracker() {
             )}
             {state.result.profileCompletionStatus === "requested" && (
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800">
-                Your complete profile is now required. Open the secure single-use link in your screening update or email.
+                Your education details are now required. Open the secure single-use link in your screening update or email.
               </div>
             )}
             {state.result.profileCompletionStatus === "completed" && (
               <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-xs font-semibold text-blue-800">
-                Your complete applicant profile has been received.
+                Your education details have been received.
               </div>
             )}
             {state.result.notifications.length > 0 && (

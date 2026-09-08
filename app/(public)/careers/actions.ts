@@ -48,18 +48,20 @@ function splitFullName(value: string) {
   };
 }
 
-async function validateResumePdf(file: File) {
+type ResumeCheck = { error: string | null; extractedText: string };
+
+async function validateResumePdf(file: File): Promise<ResumeCheck> {
   if (file.type !== "application/pdf" || !file.name.toLowerCase().endsWith(".pdf"))
-    return "Only PDF resume files are accepted.";
+    return { error: "Only PDF resume files are accepted.", extractedText: "" };
   if (file.size > 4 * 1024 * 1024)
-    return "Your PDF must be 4 MB or smaller.";
+    return { error: "Your PDF must be 4 MB or smaller.", extractedText: "" };
   if (file.size < 500)
-    return "The uploaded PDF is empty or incomplete.";
+    return { error: "The uploaded PDF is empty or incomplete.", extractedText: "" };
 
   const bytes = new Uint8Array(await file.arrayBuffer());
   const signature = new TextDecoder("ascii").decode(bytes.slice(0, 5));
   if (signature !== "%PDF-")
-    return "The file is not a valid PDF document.";
+    return { error: "The file is not a valid PDF document.", extractedText: "" };
 
   const parser = new PDFParse({ data: bytes });
   try {
@@ -75,20 +77,23 @@ async function validateResumePdf(file: File) {
     const matchedSections = indicators.filter((pattern) => pattern.test(text)).length;
     const wordCount = text.split(/\s+/).filter(Boolean).length;
     if (wordCount < 40 || matchedSections < 2)
-      return "This PDF does not appear to contain a readable resume. Upload a searchable PDF with sections such as experience, education, or skills.";
+      return {
+        error: "This PDF does not appear to contain a readable resume. Upload a searchable PDF with sections such as experience, education, or skills.",
+        extractedText: "",
+      };
+    return { error: null, extractedText: result.text.slice(0, 50_000) };
   } catch (error) {
     const parserMessage =
       error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     console.error("Resume PDF parsing failed", parserMessage);
     if (/password|encrypted/i.test(parserMessage))
-      return "This PDF is password-protected. Upload an unlocked, searchable resume PDF.";
+      return { error: "This PDF is password-protected. Upload an unlocked, searchable resume PDF.", extractedText: "" };
     if (/invalid pdf|invalid.*structure|corrupt|format error/i.test(parserMessage))
-      return "This PDF appears damaged or invalid. Export the resume as a new PDF and try again.";
-    return "The PDF could not be processed. Export it as a new searchable PDF and try again.";
+      return { error: "This PDF appears damaged or invalid. Export the resume as a new PDF and try again.", extractedText: "" };
+    return { error: "The PDF could not be processed. Export it as a new searchable PDF and try again.", extractedText: "" };
   } finally {
     await parser.destroy();
   }
-  return null;
 }
 
 export async function submitPublicApplication(
@@ -115,12 +120,12 @@ export async function submitPublicApplication(
       message: "Please attach your resume.",
       fieldErrors: { resume: "Resume is required" },
     };
-  const resumeError = await validateResumePdf(resume);
-  if (resumeError)
+  const resumeCheck = await validateResumePdf(resume);
+  if (resumeCheck.error)
     return {
       status: "error",
       message: "Please upload a valid resume PDF.",
-      fieldErrors: { resume: resumeError },
+      fieldErrors: { resume: resumeCheck.error },
     };
   if (!isAdminConfigured()) {
     const previewReference = reference("APL");
@@ -267,6 +272,7 @@ export async function submitPublicApplication(
     file_name: resume.name,
     file_size: resume.size,
     mime_type: resume.type,
+    extracted_text: resumeCheck.extractedText,
     verification_status: "under_review",
     notes: "PDF format and resume structure checks passed; final HR verification is required.",
   });
@@ -309,41 +315,13 @@ export type ProfileCompletionState = {
 const profileCompletionSchema = z
   .object({
     token: z.string().regex(/^[a-f0-9]{64}$/i, "The secure profile link is invalid"),
-    alternative_phone: z.union([
-      z.string().regex(/^\d{7,15}$/, "Use 7 to 15 numbers only"),
-      z.literal(""),
-    ]),
-    linkedin_url: z.union([z.url("Enter a complete LinkedIn URL"), z.literal("")]),
-    current_job_title: z.string().trim().min(2, "Current or most recent role is required").max(160),
-    current_employer: z.string().trim().max(160),
-    years_experience: z.preprocess((value) => Number(value), z.number().min(0).max(60)),
-    expected_salary: z.union([z.string().regex(/^\d+(\.\d{1,2})?$/, "Enter a valid amount"), z.literal("")]),
-    availability_date: z.union([z.string().date(), z.literal("")]),
-    about: z.string().trim().min(30, "Add at least 30 characters about your professional background").max(3000),
     school: z.string().trim().min(2, "School or university is required").max(200),
     degree: z.string().trim().min(2, "Degree or qualification is required").max(160),
     field_of_study: z.string().trim().min(2, "Field of study is required").max(160),
     education_start: z.union([z.string().date(), z.literal("")]),
     education_end: z.union([z.string().date(), z.literal("")]),
     education_notes: z.string().trim().max(1000),
-    experience_company: z.string().trim().max(160),
-    experience_position: z.string().trim().max(160),
-    employment_type: z.string().trim().max(80),
-    experience_start: z.union([z.string().date(), z.literal("")]),
-    experience_end: z.union([z.string().date(), z.literal("")]),
-    currently_employed: z.preprocess((value) => value === "on", z.boolean()),
-    responsibilities: z.string().trim().max(2000),
-    achievements: z.string().trim().max(2000),
-  })
-  .refine(
-    (value) =>
-      (!value.experience_company && !value.experience_position) ||
-      Boolean(value.experience_company && value.experience_position),
-    {
-      message: "Provide both company and position, or leave both blank",
-      path: ["experience_company"],
-    },
-  );
+  });
 
 export async function completeScreenedApplicantProfile(
   _: ProfileCompletionState,
@@ -382,8 +360,8 @@ export async function completeScreenedApplicantProfile(
   return {
     status: "success",
     message: applicationId
-      ? "Your complete profile was submitted securely. HR can now continue the interview process."
-      : "Your profile was submitted.",
+      ? "Your education details were submitted securely. HR can now continue the interview process."
+      : "Your education details were submitted.",
   };
 }
 

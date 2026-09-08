@@ -2,6 +2,8 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import "pdf-parse/worker";
+import { PDFParse } from "pdf-parse";
 import { z } from "zod";
 import { createApplicantNotification } from "@/lib/applicant-notifications";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
@@ -176,12 +178,12 @@ export async function updateApplicationStage(
           ? `Application update: ${vacancy?.title || "your application"}`
           : `Resume screening update for ${vacancy?.title || "your application"}`;
     const body = interviewStage
-      ? `Hi ${applicant.first_name || "there"}, you are qualified for an interview and your application has progressed to ${stage.name}. ${profileUrl ? `Complete your full applicant profile using this secure link: ${profileUrl}.` : "Use the secure profile link from your earlier screening update if your details are still incomplete."} The recruitment team will share scheduling details with you.`
+      ? `Hi ${applicant.first_name || "there"}, you are qualified for an interview and your application has progressed to ${stage.name}. ${profileUrl ? `Complete your education details using this secure link: ${profileUrl}.` : "Use the secure profile link from your earlier screening update if your education details are still incomplete."} The recruitment team will share scheduling details with you.`
       : isHired
         ? `Hi ${applicant.first_name || "there"}, congratulations. You have been selected for ${vacancy?.title || "the position"}. The HR team will contact you with the next steps.`
         : isRejected
           ? `Hi ${applicant.first_name || "there"}, thank you for your interest in ${vacancy?.title || "the position"}. After review, your application was not selected for this role. Your information remains available to the HR team for appropriate future opportunities.`
-          : `Hi ${applicant.first_name || "there"}, your resume passed the initial screening for ${vacancy?.title || "the position"}. Please complete your professional and education profile within 14 days using this secure link: ${profileUrl}. This screening result is not yet an interview invitation; HR will notify you separately if you qualify for an interview.`;
+          : `Hi ${applicant.first_name || "there"}, your resume passed the initial screening for ${vacancy?.title || "the position"}. Please complete your education details within 14 days using this secure link: ${profileUrl}. This screening result is not yet an interview invitation; HR will notify you separately if you qualify for an interview.`;
     try {
       await createApplicantNotification(ctx, {
         applicantId: application.applicant_id,
@@ -297,7 +299,7 @@ export async function createInterview(
   const vacancy = application.job_vacancies as unknown as { title?: string } | null;
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
   const profileInstruction = profileToken
-    ? ` Complete your full applicant profile using this secure link: ${siteUrl}/careers/track?token=${encodeURIComponent(profileToken)}.`
+    ? ` Complete your education details using this secure link: ${siteUrl}/careers/track?token=${encodeURIComponent(profileToken)}.`
     : application.profile_completion_status === "requested"
       ? " Use the secure profile-completion link from your qualification update if your details are still incomplete."
       : "";
@@ -376,8 +378,8 @@ export async function sendApplicantProfileRequest(
       applicationId: application.id,
       recipient: applicant.email,
       eventType: "profile_completion_requested",
-      subject: `Complete your applicant profile for ${vacancy?.title || "your application"}`,
-      body: `Hi ${applicant.first_name || "there"}, please complete your professional and education profile within 14 days using this secure single-use link: ${siteUrl}/careers/track?token=${encodeURIComponent(profileToken)}.`,
+      subject: `Complete your education details for ${vacancy?.title || "your application"}`,
+      body: `Hi ${applicant.first_name || "there"}, please complete your education details within 14 days using this secure single-use link: ${siteUrl}/careers/track?token=${encodeURIComponent(profileToken)}.`,
     });
   } catch {
     return {
@@ -526,7 +528,7 @@ export async function generateAiAssessment(
     return { ok: false, message: "Application could not be assessed." };
   const { data: application } = await ctx.db
     .from("job_applications")
-    .select("id,applicant_id,job_vacancy_id,cover_letter,application_status,profile_completion_status")
+    .select("id,applicant_id,job_vacancy_id,application_status,profile_completion_status")
     .eq("id", applicationId)
     .eq("organization_id", ctx.organizationId)
     .maybeSingle();
@@ -538,50 +540,71 @@ export async function generateAiAssessment(
       ok: false,
       message: "Wait until the applicant completes their screened profile before generating a match assessment.",
     };
-  const { data: verifiedResume } = await ctx.db
+  const { data: verifiedResume, error: resumeReadError } = await ctx.db
     .from("applicant_documents")
-    .select("id")
+    .select("id,extracted_text,storage_path,mime_type")
     .eq("job_application_id", application.id)
     .eq("document_type", "resume")
     .eq("verification_status", "verified")
     .is("deleted_at", null)
     .limit(1)
     .maybeSingle();
+  if (
+    resumeReadError?.code === "42703" ||
+    resumeReadError?.message.includes("extracted_text")
+  )
+    return {
+      ok: false,
+      message: "Run 202609080009_simplify_screened_profile.sql in Supabase before generating the assessment.",
+    };
   if (!verifiedResume)
     return { ok: false, message: "Verify the applicant's resume before generating a match assessment." };
-  const [applicantResult, vacancyResult, experienceResult, educationResult] =
-    await Promise.all([
-      ctx.db
-        .from("applicants")
-        .select("current_job_title,current_employer,years_experience")
-        .eq("id", application.applicant_id)
-        .single(),
-      ctx.db
-        .from("job_vacancies")
-        .select("title,qualifications,required_skills,preferred_skills")
-        .eq("id", application.job_vacancy_id)
-        .single(),
-      ctx.db
-        .from("applicant_experience")
-        .select("position,responsibilities,achievements")
-        .eq("applicant_id", application.applicant_id),
-      ctx.db
-        .from("applicant_education")
-        .select("school,degree,field_of_study")
-        .eq("applicant_id", application.applicant_id),
-    ]);
-  if (applicantResult.error || vacancyResult.error)
+  let resumeText = verifiedResume.extracted_text || "";
+  if (!resumeText && verifiedResume.mime_type === "application/pdf") {
+    const { data: resumeFile, error: downloadError } = await ctx.db.storage
+      .from("applicant-documents")
+      .download(verifiedResume.storage_path);
+    if (downloadError || !resumeFile)
+      return { ok: false, message: "The verified resume could not be read from secure storage." };
+    const parser = new PDFParse({
+      data: new Uint8Array(await resumeFile.arrayBuffer()),
+    });
+    try {
+      const parsedResume = await parser.getText({ first: 6 });
+      resumeText = parsedResume.text.slice(0, 50_000);
+      const { error: cacheError } = await ctx.db
+        .from("applicant_documents")
+        .update({ extracted_text: resumeText })
+        .eq("id", verifiedResume.id)
+        .eq("organization_id", ctx.organizationId);
+      if (cacheError) return { ok: false, message: cacheError.message };
+    } catch {
+      return {
+        ok: false,
+        message: "The verified resume is not searchable. Ask the applicant for a searchable PDF.",
+      };
+    } finally {
+      await parser.destroy();
+    }
+  }
+  const [vacancyResult, educationResult] = await Promise.all([
+    ctx.db
+      .from("job_vacancies")
+      .select("title,qualifications,required_skills,preferred_skills")
+      .eq("id", application.job_vacancy_id)
+      .single(),
+    ctx.db
+      .from("applicant_education")
+      .select("school,degree,field_of_study")
+      .eq("applicant_id", application.applicant_id),
+  ]);
+  if (vacancyResult.error)
     return { ok: false, message: "Candidate or vacancy details are incomplete." };
 
-  const applicant = applicantResult.data;
   const vacancy = vacancyResult.data;
-  const experience = experienceResult.data || [];
   const education = educationResult.data || [];
   const candidateText = [
-    applicant.current_job_title,
-    applicant.current_employer,
-    application.cover_letter,
-    ...experience.flatMap((item) => [item.position, item.responsibilities, item.achievements]),
+    resumeText,
     ...education.flatMap((item) => [item.school, item.degree, item.field_of_study]),
   ]
     .filter(Boolean)
@@ -599,17 +622,16 @@ export async function generateAiAssessment(
   const titleMatches = [...words(vacancy.title)].filter((word) =>
     candidateWords.has(word),
   ).length;
-  const yearsScore = Math.min(Number(applicant.years_experience || 0) * 4, 20);
   const requiredScore = required.length
-    ? (requiredMatches.length / required.length) * 50
-    : Math.min(experience.length * 8, 24);
+    ? (requiredMatches.length / required.length) * 55
+    : 25;
   const preferredScore = preferred.length
-    ? (preferredMatches.length / preferred.length) * 15
-    : 5;
-  const titleScore = Math.min(titleMatches * 5, 10);
-  const contextScore = application.cover_letter ? 5 : 0;
+    ? (preferredMatches.length / preferred.length) * 20
+    : 10;
+  const titleScore = Math.min(titleMatches * 5, 15);
+  const resumeEvidenceScore = resumeText ? 10 : 0;
   const score = Math.round(
-    Math.min(100, yearsScore + requiredScore + preferredScore + titleScore + contextScore),
+    Math.min(100, requiredScore + preferredScore + titleScore + resumeEvidenceScore),
   );
   const recommendation =
     score >= 75 ? "strong_match" : score >= 50 ? "potential_match" : "manual_review";
@@ -620,18 +642,18 @@ export async function generateAiAssessment(
     ...(preferredMatches.length
       ? [`Matches preferred skills: ${preferredMatches.join(", ")}`]
       : []),
-    ...(Number(applicant.years_experience || 0) > 0
-      ? [`${Number(applicant.years_experience)} years of reported experience`]
-      : []),
+    ...(resumeText ? ["Searchable resume evidence included"] : []),
   ];
   const missingRequired = required.filter((skill) => !requiredMatches.includes(skill));
   const concerns = [
     ...(missingRequired.length
       ? [`Not evidenced in submitted information: ${missingRequired.join(", ")}`]
       : []),
-    ...(!application.cover_letter ? ["No cover letter was provided"] : []),
+    ...(!resumeText
+      ? ["Resume text was not captured for this older application"]
+      : []),
   ];
-  const summary = `Job-related fit score ${score}/100 based on submitted experience and vacancy criteria. This is decision support only; every candidate requires human review.`;
+  const summary = `Job-related fit score ${score}/100 based on the submitted resume, education details, and vacancy criteria. This is decision support only; every candidate requires human review.`;
   const { error } = await ctx.db.from("applicant_ai_assessments").upsert(
     {
       organization_id: ctx.organizationId,

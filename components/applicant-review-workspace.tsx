@@ -7,18 +7,14 @@ import {
   Archive,
   ArrowLeft,
   BrainCircuit,
-  BriefcaseBusiness,
   CalendarClock,
   Check,
   Download,
-  ExternalLink,
   FileCheck2,
   FilePlus2,
   GraduationCap,
   Mail,
-  MapPin,
   Pencil,
-  Phone,
   Plus,
   RotateCw,
   ShieldCheck,
@@ -581,8 +577,8 @@ function CompleteProfileSection({
           title="Complete applicant profile"
           description={
             requested
-              ? "The secure profile form was sent after resume screening."
-              : "Professional background and education stay hidden until resume screening is passed."
+              ? "The secure education form was sent after resume screening."
+              : "Education details are requested only after resume screening is passed."
           }
           action={
             <div className="flex items-center gap-2">
@@ -610,7 +606,7 @@ function CompleteProfileSection({
         >
           {requested
             ? "Waiting for the applicant to submit the single-use secure form. Their initial contact details and PDF resume remain available for review."
-            : "Move this application beyond Resume Screening to request the applicant’s full professional and education profile."}
+            : "Move this application beyond Resume Screening to request the applicant’s education details."}
         </div>
       </section>
     );
@@ -620,47 +616,11 @@ function CompleteProfileSection({
       <SectionHeading
         icon={UserRoundCheck}
         title="Complete applicant profile"
-        description="Submitted securely after the applicant passed resume screening."
+        description="Education details submitted securely after resume screening."
         action={<Badge value="completed" />}
       />
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <ProfileFact icon={BriefcaseBusiness} label="Current role" value={data.applicant.currentJobTitle || "Not provided"} />
-        <ProfileFact icon={BriefcaseBusiness} label="Employer" value={data.applicant.currentEmployer || "Not provided"} />
-        <ProfileFact icon={CalendarClock} label="Experience" value={`${data.applicant.yearsExperience} years`} />
-        <ProfileFact icon={MapPin} label="Location" value={[data.applicant.city, data.applicant.region].filter(Boolean).join(", ") || "Not provided"} />
-        <ProfileFact icon={Phone} label="Alternative phone" value={data.applicant.alternativePhone || "Not provided"} />
-        <ProfileFact icon={CalendarClock} label="Available from" value={data.applicant.availabilityDate ? formatDate(data.applicant.availabilityDate) : "Not provided"} />
-      </div>
-
-      {(data.applicant.linkedinUrl || data.applicant.expectedSalary !== null) && (
-        <div className="mt-4 flex flex-wrap gap-3">
-          {data.applicant.linkedinUrl && (
-            <a
-              href={data.applicant.linkedinUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-xl bg-brand-50 px-3 py-2 text-xs font-bold text-brand-700 hover:bg-brand-100"
-            >
-              LinkedIn profile <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          )}
-          {data.applicant.expectedSalary !== null && (
-            <span className="inline-flex items-center rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">
-              Expected salary: {new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 }).format(data.applicant.expectedSalary)}
-            </span>
-          )}
-        </div>
-      )}
-
-      {application.coverLetter && (
-        <div className="mt-6 border-t border-slate-100 pt-6">
-          <h3 className="text-sm font-bold text-slate-900">Professional summary</h3>
-          <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{application.coverLetter}</p>
-        </div>
-      )}
-
-      <div className="mt-6 grid gap-5 border-t border-slate-100 pt-6 lg:grid-cols-2">
+      <div className="mt-6 border-t border-slate-100 pt-6">
         <ProfileHistory
           icon={GraduationCap}
           title="Education"
@@ -673,29 +633,8 @@ function CompleteProfileSection({
             detail: item.description,
           }))}
         />
-        <ProfileHistory
-          icon={BriefcaseBusiness}
-          title="Relevant experience"
-          empty="Applicant identified as a first-time job seeker or did not add experience."
-          items={data.experience.map((item) => ({
-            id: item.id,
-            title: item.position,
-            subtitle: [item.company, item.employmentType].filter(Boolean).join(" · "),
-            dates: profileDateRange(item.startDate, item.currentlyEmployed ? null : item.endDate, item.currentlyEmployed),
-            detail: [item.responsibilities, item.achievements].filter(Boolean).join("\n"),
-          }))}
-        />
       </div>
     </section>
-  );
-}
-
-function ProfileFact({ icon: Icon, label: itemLabel, value }: { icon: typeof Phone; label: string; value: string }) {
-  return (
-    <div className="flex min-w-0 items-start gap-3 rounded-2xl bg-slate-50 p-4">
-      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
-      <div className="min-w-0"><div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{itemLabel}</div><div className="mt-1 break-words text-sm font-bold text-slate-800">{value}</div></div>
-    </div>
   );
 }
 
@@ -818,7 +757,7 @@ function AiAssessmentSection({
       <SectionHeading
         icon={BrainCircuit}
         title="AI-assisted candidate match"
-        description="Explainable job-fit support using submitted, job-related information only."
+        description="Explainable job-fit support using the submitted resume, education, and vacancy criteria."
         action={
           <button
             type="button"

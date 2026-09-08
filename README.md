@@ -18,7 +18,7 @@ A workflow-centered HRMS built with Next.js, TypeScript, Supabase Auth, PostgreS
 - Audit events for create, update, archive, upload, and download operations
 - Preview data when Supabase environment variables are absent
 - Public careers homepage, searchable roles, simplified applications, validated PDF resume uploads, and application tracking
-- Secure post-screening profile completion for professional, education, and experience details
+- Secure post-screening completion for education details; professional evidence is read from the searchable resume
 - Hired-applicant conversion with invited temporary accounts, due-dated document requirements, training release, and permanent-access promotion
 - Guided `Hire & onboard` decision that requires a completed interview and commits the hiring decision with preboarding records in one database transaction
 
@@ -36,7 +36,7 @@ Private buckets are created by the migration. Employee-document uploads accept P
 
 The public candidate experience is available at `/`, `/careers`, and `/careers/track`. The initial form asks only for contact details and a searchable PDF resume up to 4 MB. The server verifies the MIME type, `.pdf` extension, PDF signature, readable extracted text, and resume-like section structure before writing to the private `applicant-documents` bucket. The Server Action allows a 4.25 MB multipart request, keeping it below Vercel's 4.5 MB function payload limit. This automated check reduces mislabeled uploads but does not replace final HR verification.
 
-When HR moves an application beyond **Resume Screening**, the applicant receives a portal notification and, when Resend is configured, an email containing a random single-use profile link that expires after 14 days. The detailed professional, education, and relevant-experience form is available only through that link. Apply `202609070007_screened_applicant_profiles.sql` before using this workflow.
+When HR moves an application beyond **Resume Screening**, the applicant receives a portal notification and, when Resend is configured, an email containing a random single-use profile link that expires after 14 days. The secure form asks only for education details; professional and experience evidence is taken from the searchable PDF resume. Apply `202609070007_screened_applicant_profiles.sql` and `202609080009_simplify_screened_profile.sql` before using this workflow.
 
 HR administrators manage hired-employee access at `/hr/preboarding`. Supabase sends the invited new hire to `/account/set-password`; their private checklist is at `/employee/onboarding`. Add `NEXT_PUBLIC_SITE_URL` for the deployed site and include `/auth/callback` in the Supabase Auth redirect allow list.
 
