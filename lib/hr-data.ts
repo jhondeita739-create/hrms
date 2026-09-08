@@ -1,5 +1,6 @@
 import { demoData } from "@/lib/demo-data";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
+import { getProfileImageUrlMap } from "@/lib/profile-images";
 import type { EntityKey, FieldOption, ResourceRecord } from "@/types/resources";
 
 type Raw = Record<string, unknown>;
@@ -39,7 +40,28 @@ export async function getResource(
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
-    return (data as Raw[]).map((r) => {
+    const rows = (data || []) as unknown as Raw[];
+    const applicantIds = rows.map((row) => String(row.id));
+    const { data: linkedEmployees, error: linkedEmployeesError } = applicantIds.length
+      ? await db
+          .from("employees")
+          .select("source_applicant_id,user_id")
+          .in("source_applicant_id", applicantIds)
+          .is("deleted_at", null)
+      : { data: [], error: null };
+    if (linkedEmployeesError) throw new Error(linkedEmployeesError.message);
+    const employeeUserByApplicant = new Map(
+      (linkedEmployees || []).map((employee) => [
+        employee.source_applicant_id,
+        employee.user_id,
+      ]),
+    );
+    const avatarUrls = await getProfileImageUrlMap(
+      Array.from(employeeUserByApplicant.values()).filter(
+        (userId): userId is string => Boolean(userId),
+      ),
+    );
+    return rows.map((r) => {
       const apps = r.job_applications as Raw[] | undefined;
       const app = apps?.sort((a, b) =>
         String(b.applied_at || "").localeCompare(String(a.applied_at || "")),
@@ -55,6 +77,8 @@ export async function getResource(
       return {
         ...r,
         name: name(r),
+        avatar_url:
+          avatarUrls.get(employeeUserByApplicant.get(String(r.id)) || "") || null,
         stage: String(stage?.name || "No application"),
         application_status: String(app?.application_status || "no_application"),
         rating: Number(app?.rating || 0),
@@ -88,12 +112,16 @@ export async function getResource(
     const { data, error } = await db
       .from("employees")
       .select(
-        "id,employee_number,first_name,middle_name,last_name,work_email,personal_email,phone,hire_date,employment_status,employment_records!employment_records_employee_id_fkey(id,department_id,employment_type,work_arrangement,departments(name),positions(title),is_current)",
+        "id,employee_number,user_id,first_name,middle_name,last_name,work_email,personal_email,phone,hire_date,employment_status,employment_records!employment_records_employee_id_fkey(id,department_id,employment_type,work_arrangement,departments(name),positions(title),is_current)",
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
-    return (data as Raw[]).map((r) => {
+    const rows = (data || []) as unknown as Raw[];
+    const avatarUrls = await getProfileImageUrlMap(
+      rows.map((row) => String(row.user_id || "")),
+    );
+    return rows.map((r) => {
       const records = (r.employment_records as Raw[])?.filter(
         (x) => x.is_current,
       );
@@ -101,6 +129,7 @@ export async function getResource(
       return {
         ...r,
         name: name(r),
+        avatar_url: avatarUrls.get(String(r.user_id || "")) || null,
         department: String((current?.departments as Raw)?.name || "Unassigned"),
         department_id: String(current?.department_id || ""),
         position: String((current?.positions as Raw)?.title || "Unassigned"),

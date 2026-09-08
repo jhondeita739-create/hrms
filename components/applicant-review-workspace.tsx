@@ -228,8 +228,13 @@ export function ApplicantReviewWorkspace({
 
       <header className="flex flex-col gap-5 rounded-3xl bg-white p-6 shadow-[0_8px_30px_rgb(15,23,42,0.05)] ring-1 ring-slate-200/70 sm:flex-row sm:items-end sm:justify-between sm:p-8">
         <div className="flex min-w-0 items-start gap-4">
-          <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-brand-50 text-sm font-black text-brand-700">
-            {initials(initialData.applicant.name)}
+          <span
+            role="img"
+            aria-label={`${initialData.applicant.name} profile image`}
+            className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-brand-50 bg-cover bg-center text-sm font-black text-brand-700 ring-1 ring-slate-200"
+            style={initialData.applicant.avatarUrl ? { backgroundImage: `url(${JSON.stringify(initialData.applicant.avatarUrl)})` } : undefined}
+          >
+            {!initialData.applicant.avatarUrl && initials(initialData.applicant.name)}
           </span>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">

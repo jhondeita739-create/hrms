@@ -40,6 +40,7 @@ function refreshPreboarding() {
   revalidatePath("/hr/preboarding");
   revalidatePath("/hr/onboarding");
   revalidatePath("/hr/employees");
+  revalidatePath("/hr/records");
   revalidatePath("/hr/dashboard");
   revalidatePath("/employee/onboarding");
 }

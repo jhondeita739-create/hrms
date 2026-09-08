@@ -51,6 +51,9 @@ export function EmployeeOnboardingPortal({ data }: { data: EmployeeOnboardingDat
   const requirementProgress = account.requirements.length
     ? Math.round((done / account.requirements.length) * 100)
     : 0;
+  const outstandingRequirements = account.requirements.filter(
+    (item) => !["submitted", "under_review", "verified", "waived"].includes(item.status),
+  );
 
   function run(task: Promise<PreboardingMutationResult>, after?: () => void) {
     startTransition(async () => {
@@ -103,7 +106,17 @@ export function EmployeeOnboardingPortal({ data }: { data: EmployeeOnboardingDat
           <div className="min-w-0 space-y-6">
             <section className="rounded-3xl bg-white p-5 shadow-panel ring-1 ring-slate-200/70 sm:p-7">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[.14em] text-brand-600">Document center</p><h2 className="mt-2 text-xl font-extrabold text-slate-900">Required documents</h2><p className="mt-1 text-sm text-slate-500">PDF, JPG, or PNG up to 4 MB. Re-uploading creates a secure new version.</p></div><div className="min-w-44"><div className="mb-2 flex justify-between text-xs font-bold text-slate-600"><span>Submission progress</span><span>{requirementProgress}%</span></div><div className="h-2 rounded-full bg-slate-100"><div className="h-2 rounded-full bg-brand-600 transition-[width] duration-500" style={{ width: `${requirementProgress}%` }} /></div></div></div>
-              <div className="mt-6 space-y-4">{account.requirements.map((item) => <EmployeeRequirementRow key={item.id} item={item} pending={pending} run={run} />)}{!account.requirements.length && <div className="rounded-2xl bg-slate-50 p-6 text-center text-sm text-slate-500">HR has not assigned any document requirements.</div>}</div>
+              <div className="mt-6 space-y-4">
+                {outstandingRequirements.map((item) => <EmployeeRequirementRow key={item.id} item={item} pending={pending} run={run} />)}
+                {account.requirements.length > 0 && requirementProgress === 100 && (
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center">
+                    <CheckCircle2 className="mx-auto h-7 w-7 text-emerald-600" />
+                    <p className="mt-3 text-sm font-extrabold text-emerald-900">All requirements submitted</p>
+                    <p className="mt-1 text-xs leading-5 text-emerald-700">Your documents were sent securely to HR and are no longer shown here. HR can still review every submission from the admin workspace.</p>
+                  </div>
+                )}
+                {!account.requirements.length && <div className="rounded-2xl bg-slate-50 p-6 text-center text-sm text-slate-500">HR has not assigned any document requirements.</div>}
+              </div>
             </section>
 
             {account.trainings.length > 0 && (

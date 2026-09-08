@@ -1,4 +1,5 @@
 import { demoData } from "@/lib/demo-data";
+import { getProfileImageUrlMap } from "@/lib/profile-images";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 
 type Raw = Record<string, unknown>;
@@ -93,6 +94,7 @@ export type ApplicantReviewData = {
     expectedSalary: number | null;
     availabilityDate: string | null;
     status: string;
+    avatarUrl: string | null;
   };
   applications: ApplicantReviewApplication[];
   documents: ApplicantDocumentRecord[];
@@ -130,6 +132,7 @@ export async function getApplicantReviewData(
         expectedSalary: null,
         availabilityDate: null,
         status: String(preview.status),
+        avatarUrl: null,
       },
       applications: [
         {
@@ -183,6 +186,17 @@ export async function getApplicantReviewData(
     .maybeSingle();
   if (applicantError) throw new Error(applicantError.message);
   if (!applicant) return null;
+
+  const { data: linkedEmployee, error: linkedEmployeeError } = await db
+    .from("employees")
+    .select("user_id")
+    .eq("source_applicant_id", applicantId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (linkedEmployeeError) throw new Error(linkedEmployeeError.message);
+  const avatarUrls = await getProfileImageUrlMap(
+    linkedEmployee?.user_id ? [linkedEmployee.user_id] : [],
+  );
 
   const { data: applications, error: applicationsError } = await db
     .from("job_applications")
@@ -267,6 +281,9 @@ export async function getApplicantReviewData(
       expectedSalary: applicant.expected_salary == null ? null : Number(applicant.expected_salary),
       availabilityDate: applicant.availability_date,
       status: applicant.status,
+      avatarUrl: linkedEmployee?.user_id
+        ? avatarUrls.get(linkedEmployee.user_id) || null
+        : null,
     },
     applications: ((applications || []) as unknown as Raw[]).map((application) => {
       const vacancy = application.job_vacancies as Raw | null;

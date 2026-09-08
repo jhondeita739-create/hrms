@@ -81,6 +81,22 @@ function Status({ value }: { value: string }) {
   );
 }
 
+function EmployeeAvatar({ account, className }: { account: PreboardingAccount; className: string }) {
+  return (
+    <span
+      role="img"
+      aria-label={`${account.employeeName} profile image`}
+      className={cn(
+        "grid shrink-0 place-items-center bg-brand-100 bg-cover bg-center font-black text-brand-700 ring-1 ring-slate-200",
+        className,
+      )}
+      style={account.avatarUrl ? { backgroundImage: `url(${JSON.stringify(account.avatarUrl)})` } : undefined}
+    >
+      {!account.avatarUrl && initials(account.employeeName)}
+    </span>
+  );
+}
+
 export function PreboardingWorkspace({ data }: { data: PreboardingAdminData }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -167,7 +183,7 @@ export function PreboardingWorkspace({ data }: { data: PreboardingAdminData }) {
                 onClick={() => setSelectedId(account.id)}
                 className={cn("flex w-full items-center gap-3 rounded-2xl p-3 text-left transition-colors", selected?.id === account.id ? "bg-brand-50" : "hover:bg-slate-50")}
               >
-                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-xs font-extrabold text-brand-700 ring-1 ring-slate-200">{initials(account.employeeName)}</span>
+                <EmployeeAvatar account={account} className="h-10 w-10 rounded-xl text-xs" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-bold text-slate-900">{account.employeeName}</span>
                   <span className="mt-1 block truncate text-xs text-slate-500">{account.position}</span>
@@ -216,7 +232,7 @@ function AccountSummary({ account, pending, run }: { account: PreboardingAccount
     <section className="rounded-3xl bg-white p-5 shadow-panel ring-1 ring-slate-200/70 sm:p-7">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 items-center gap-4">
-          <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-brand-100 text-base font-black text-brand-700">{initials(account.employeeName)}</span>
+          <EmployeeAvatar account={account} className="h-14 w-14 rounded-2xl text-base" />
           <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="truncate text-xl font-extrabold text-slate-900">{account.employeeName}</h2><Status value={account.accessStatus} /></div><p className="mt-1 truncate text-sm text-slate-500">{account.employeeNumber} · {account.email}</p><p className="mt-1 text-xs font-semibold text-slate-400">{account.position}</p></div>
         </div>
         <div className="flex flex-wrap justify-end gap-2">

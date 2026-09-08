@@ -308,8 +308,13 @@ export function ResourceWorkspace({
           if (column.format === "person")
             return (
               <div className="flex items-center gap-3">
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-50 text-[11px] font-bold text-brand-700">
-                  {initials(String(value))}
+                <span
+                  role="img"
+                  aria-label={`${String(value)} profile image`}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-50 bg-cover bg-center text-[11px] font-bold text-brand-700 ring-1 ring-slate-200"
+                  style={row.original.avatar_url ? { backgroundImage: `url(${JSON.stringify(String(row.original.avatar_url))})` } : undefined}
+                >
+                  {!row.original.avatar_url && initials(String(value))}
                 </span>
                 <div>
                   <div className="font-medium text-slate-900">
@@ -658,8 +663,13 @@ export function ResourceWorkspace({
           {table.getRowModel().rows.map((row) => (
             <article className="p-4" key={row.id}>
               <div className="flex items-start gap-3">
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-brand-50 text-xs font-black text-brand-700">
-                  {initials(String(row.original[primaryResourceColumn.key] || config.singular))}
+                <span
+                  role="img"
+                  aria-label={`${String(row.original[primaryResourceColumn.key] || config.singular)} profile image`}
+                  className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-brand-50 bg-cover bg-center text-xs font-black text-brand-700 ring-1 ring-slate-200"
+                  style={row.original.avatar_url ? { backgroundImage: `url(${JSON.stringify(String(row.original.avatar_url))})` } : undefined}
+                >
+                  {!row.original.avatar_url && initials(String(row.original[primaryResourceColumn.key] || config.singular))}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-bold text-slate-900">

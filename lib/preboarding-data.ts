@@ -1,5 +1,6 @@
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 import { createAdminClient, isAdminConfigured } from "@/lib/supabase/admin";
+import { getProfileImageUrlMap } from "@/lib/profile-images";
 
 type Raw = Record<string, unknown>;
 
@@ -132,6 +133,7 @@ export async function getPreboardingAdminData(): Promise<PreboardingAdminData> {
   }
 
   const rawAccounts = (accountsResult.data || []) as unknown as Raw[];
+  const accountUserIds = rawAccounts.map((row) => String(row.user_id || "")).filter(Boolean);
   const usedApplications = new Set(
     rawAccounts.map((row) => String(row.job_application_id || "")).filter(Boolean),
   );
@@ -155,6 +157,7 @@ export async function getPreboardingAdminData(): Promise<PreboardingAdminData> {
       ]),
     );
   }
+  const avatarUrls = await getProfileImageUrlMap(accountUserIds);
 
   const accounts = rawAccounts.map((row) => {
     const employee = relation(row.employees);
@@ -182,7 +185,7 @@ export async function getPreboardingAdminData(): Promise<PreboardingAdminData> {
           : "pending"
         : "unknown",
       lastSignInAt: authUser?.last_sign_in_at || null,
-      avatarUrl: null,
+      avatarUrl: avatarUrls.get(String(row.user_id)) || null,
       requirements: ((employee?.employee_requirement_requests as Raw[]) || [])
         .filter((item) => !item.deleted_at)
         .map(requirement),
