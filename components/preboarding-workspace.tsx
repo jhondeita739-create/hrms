@@ -14,6 +14,7 @@ import {
   Plus,
   Save,
   ShieldAlert,
+  Trash2,
   UserPlus,
   Users,
   X,
@@ -32,7 +33,10 @@ import {
   updateRequirementsDeadline,
   type PreboardingMutationResult,
 } from "@/app/actions/preboarding";
-import { getDocumentDownloadUrl } from "@/app/actions/resources";
+import {
+  getDocumentDownloadUrl,
+  permanentlyDeleteEmployee,
+} from "@/app/actions/resources";
 import { cn, formatDate, initials } from "@/lib/utils";
 import type {
   PreboardingAccount,
@@ -97,11 +101,19 @@ function EmployeeAvatar({ account, className }: { account: PreboardingAccount; c
   );
 }
 
-export function PreboardingWorkspace({ data }: { data: PreboardingAdminData }) {
+export function PreboardingWorkspace({
+  data,
+  canPermanentlyDelete = false,
+}: {
+  data: PreboardingAdminData;
+  canPermanentlyDelete?: boolean;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [selectedId, setSelectedId] = useState(data.accounts[0]?.id || "");
   const [createOpen, setCreateOpen] = useState(false);
+  const [purging, setPurging] = useState<PreboardingAccount | null>(null);
+  const [purgeConfirmation, setPurgeConfirmation] = useState("");
   const [notice, setNotice] = useState<PreboardingMutationResult | null>(null);
   const selected = useMemo(
     () => data.accounts.find((account) => account.id === selectedId) || data.accounts[0],
@@ -201,7 +213,15 @@ export function PreboardingWorkspace({ data }: { data: PreboardingAdminData }) {
 
         {selected ? (
           <div className="min-w-0 space-y-6">
-            <AccountSummary account={selected} pending={pending} run={run} />
+            <AccountSummary
+              account={selected}
+              pending={pending}
+              run={run}
+              onPurge={canPermanentlyDelete ? () => {
+                setPurging(selected);
+                setPurgeConfirmation("");
+              } : undefined}
+            />
             <RequirementsSection account={selected} documentTypes={data.documentTypes} pending={pending} run={run} />
             <TrainingSection account={selected} pending={pending} run={run} />
           </div>
@@ -218,6 +238,86 @@ export function PreboardingWorkspace({ data }: { data: PreboardingAdminData }) {
           onSubmit={(values) => run(startEmployeePreboarding(values), () => setCreateOpen(false))}
         />
       )}
+      {purging && (
+        <div className="fixed inset-0 z-[90] grid place-items-center px-4">
+          <button
+            type="button"
+            aria-label="Cancel permanent deletion"
+            className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
+            onClick={() => {
+              setPurging(null);
+              setPurgeConfirmation("");
+            }}
+          />
+          <div className="relative w-full max-w-lg rounded-3xl bg-white p-7 shadow-2xl">
+            <span className="grid h-11 w-11 place-items-center rounded-full bg-rose-100 text-rose-700">
+              <Trash2 className="h-5 w-5" />
+            </span>
+            <h2 className="mt-4 text-xl font-extrabold text-slate-950">
+              Permanently delete this new hire?
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              This removes the temporary or permanent login, employee and
+              applicant records, applications, resume, profile image,
+              requirements, uploaded documents, training, onboarding,
+              notifications, Storage files, and related audit data.
+            </p>
+            <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-rose-700">
+                Irreversible action
+              </p>
+              <p className="mt-2 text-sm text-rose-900">
+                Type employee number <strong>{purging.employeeNumber}</strong>{" "}
+                to confirm.
+              </p>
+            </div>
+            <label className="mt-5 block text-xs font-bold text-slate-700">
+              Employee number
+              <input
+                autoComplete="off"
+                value={purgeConfirmation}
+                onChange={(event) => setPurgeConfirmation(event.target.value)}
+                className="field-control mt-2"
+                placeholder={purging.employeeNumber}
+              />
+            </label>
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setPurging(null);
+                  setPurgeConfirmation("");
+                }}
+                className="h-11 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={
+                  pending || purgeConfirmation.trim() !== purging.employeeNumber
+                }
+                onClick={() =>
+                  run(
+                    permanentlyDeleteEmployee(
+                      purging.employeeId,
+                      purgeConfirmation,
+                    ),
+                    () => {
+                      setPurging(null);
+                      setPurgeConfirmation("");
+                      setSelectedId("");
+                    },
+                  )
+                }
+                className="h-11 rounded-xl bg-rose-600 px-5 text-sm font-bold text-white shadow-sm hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {pending ? "Deleting permanently…" : "Delete permanently"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -227,7 +327,7 @@ function Metric({ icon: Icon, label, value, tone }: { icon: typeof KeyRound; lab
   return <div className="flex items-center gap-4 rounded-2xl bg-white p-5 shadow-panel ring-1 ring-slate-200/70"><span className={cn("grid h-11 w-11 place-items-center rounded-2xl", color)}><Icon className="h-5 w-5" /></span><div><div className="text-2xl font-black text-slate-900">{value}</div><div className="text-xs font-semibold text-slate-500">{label}</div></div></div>;
 }
 
-function AccountSummary({ account, pending, run }: { account: PreboardingAccount; pending: boolean; run: (task: Promise<PreboardingMutationResult>, after?: () => void) => void }) {
+function AccountSummary({ account, pending, run, onPurge }: { account: PreboardingAccount; pending: boolean; run: (task: Promise<PreboardingMutationResult>, after?: () => void) => void; onPurge?: () => void }) {
   return (
     <section className="rounded-3xl bg-white p-5 shadow-panel ring-1 ring-slate-200/70 sm:p-7">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -241,6 +341,9 @@ function AccountSummary({ account, pending, run }: { account: PreboardingAccount
           )}
           {account.accessStatus !== "permanent" && (
             <button type="button" disabled={pending} onClick={() => run(setEmployeeAccessStatus(account.id, account.accessStatus === "suspended" ? "temporary" : "suspended"))} className={cn("inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-bold", account.accessStatus === "suspended" ? "bg-brand-50 text-brand-700" : "bg-rose-50 text-rose-700")}><ShieldAlert className="h-4 w-4" />{account.accessStatus === "suspended" ? "Restore access" : "Suspend access"}</button>
+          )}
+          {onPurge && (
+            <button type="button" disabled={pending} onClick={onPurge} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-50"><Trash2 className="h-4 w-4" /> Delete all data</button>
           )}
         </div>
       </div>

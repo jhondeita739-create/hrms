@@ -5,8 +5,8 @@ export const demoData: Record<EntityKey, ResourceRecord[]> = {
     { id:"a1", applicant_number:"APP-260821", name:"Maria Santos", email:"maria.santos@email.com", phone:"+63 917 432 1180", current_job_title:"Senior Accountant", source:"LinkedIn", stage:"Technical Interview", rating:4.3, status:"in_progress", created_at:"2026-08-25" },
     { id:"a2", applicant_number:"APP-260817", name:"Liam Tan", email:"liam.tan@email.com", phone:"+63 905 221 7831", current_job_title:"Product Designer", source:"Employee referral", stage:"Portfolio Review", rating:4.6, status:"in_progress", created_at:"2026-08-24" },
     { id:"a3", applicant_number:"APP-260814", name:"Angela Cruz", email:"angela.cruz@email.com", phone:"+63 918 353 9011", current_job_title:"People Operations Partner", source:"Careers page", stage:"HR Interview", rating:4.1, status:"in_progress", created_at:"2026-08-23" },
-    { id:"a4", applicant_number:"APP-260809", name:"Noah Garcia", email:"noah.g@email.com", phone:"+63 977 310 4402", current_job_title:"Backend Engineer", source:"LinkedIn", stage:"Assessment", rating:3.9, status:"in_progress", created_at:"2026-08-21" },
-    { id:"a5", applicant_number:"APP-260806", name:"Sofia Reyes", email:"sofia.reyes@email.com", phone:"+63 915 672 0018", current_job_title:"Finance Analyst", source:"Job board", stage:"Offer", rating:4.7, status:"offer", created_at:"2026-08-19" },
+    { id:"a4", applicant_number:"APP-260809", name:"Noah Garcia", email:"noah.g@email.com", phone:"+63 977 310 4402", current_job_title:"Backend Engineer", source:"LinkedIn", stage:"Final Interview", rating:3.9, status:"in_progress", created_at:"2026-08-21" },
+    { id:"a5", applicant_number:"APP-260806", name:"Sofia Reyes", email:"sofia.reyes@email.com", phone:"+63 915 672 0018", current_job_title:"Finance Analyst", source:"Job board", stage:"Hired", rating:4.7, status:"hired", created_at:"2026-08-19" },
   ],
   vacancies: [
     { id:"v1", vacancy_number:"VAC-260018", title:"Senior Accountant", department:"Finance", employment_type:"Full-time", work_arrangement:"Hybrid", number_of_openings:1, applicants:18, closing_date:"2026-09-15", status:"open" },

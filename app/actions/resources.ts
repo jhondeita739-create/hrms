@@ -26,7 +26,7 @@ const schemas = {
   employees: z.object({
     first_name:z.string().trim().min(1),last_name:z.string().trim().min(1),work_email:z.email(),personal_email:z.union([z.email(),z.literal("")]).optional().transform(v=>v||null),
     phone:optionalText,hire_date:z.string().min(1,"Hire date is required"),employment_status:z.enum(["active","probation","on_leave","inactive","separated"]),
-    department_id:optionalText,employment_type:z.string().min(1),work_arrangement:z.string().min(1),source_applicant_id:optionalText,
+    department_id:z.string().uuid("Select a department"),position_id:z.string().uuid("Select a position"),employment_type:z.string().min(1),work_arrangement:z.string().min(1),source_applicant_id:optionalText,
   }),
   onboarding: z.object({employee_id:z.string().uuid("Select an employee"),start_date:z.string().min(1),owner_id:optionalText,status:z.enum(["not_started","in_progress","ready","completed","cancelled"])}),
   documents: z.object({employee_id:z.string().uuid("Select an employee"),document_type_id:optionalText,title:z.string().trim().min(2),document_number:optionalText,issued_date:optionalText,expiration_date:optionalText,verification_status:z.enum(["pending","under_review","verified","rejected","expired"]),confidentiality_level:z.enum(["standard","confidential","highly_confidential"]),status:z.enum(["active","expired","archived"])}),
@@ -68,8 +68,12 @@ export async function createRecord(entity:EntityKey,raw:Record<string,unknown>):
   if(entity!=="departments") values.created_by=ctx.user.id;
   if(prefixByEntity[entity]) values[entity==="vacancies"?"vacancy_number":entity==="employees"?"employee_number":"applicant_number"]=numberFor(prefixByEntity[entity]!);
   const applicationVacancy=entity==="applicants"?values.job_vacancy_id:null; delete values.job_vacancy_id;
-  const employment={department_id:values.department_id,employment_type:values.employment_type,work_arrangement:values.work_arrangement,hire_date:values.hire_date};
-  if(entity==="employees") { delete values.department_id; delete values.employment_type; delete values.work_arrangement; }
+  const employment={department_id:values.department_id,position_id:values.position_id,employment_type:values.employment_type,work_arrangement:values.work_arrangement,hire_date:values.hire_date};
+  if(entity==="employees") {
+    const {data:position}=await ctx.db.from("positions").select("id,department_id").eq("id",String(values.position_id)).eq("organization_id",ctx.organizationId).eq("status","active").maybeSingle();
+    if(!position||position.department_id!==values.department_id)return {ok:false,message:"Select an active position in the chosen department.",fieldErrors:{position_id:"Position and department must match"}};
+    delete values.department_id; delete values.position_id; delete values.employment_type; delete values.work_arrangement;
+  }
   const {data,error}=await ctx.db.from(tableByEntity[entity]).insert(values).select("id").single();
   if(error) return {ok:false,message:error.code==="23505"?"A record with these details already exists.":error.message};
   if(entity==="employees") {
@@ -105,15 +109,19 @@ export async function updateRecord(entity:EntityKey,id:string,raw:Record<string,
   if(!z.string().uuid().safeParse(id).success) return {ok:false,message:"Invalid record identifier."};
   const parsed=schemas[entity].safeParse(raw); if(!parsed.success) return {ok:false,message:"Please correct the highlighted fields.",fieldErrors:fieldErrors(parsed.error)};
   const values:Record<string,unknown>={...parsed.data}; delete values.job_vacancy_id;
-  const assignment=entity==="employees"?{department_id:values.department_id,employment_type:values.employment_type,work_arrangement:values.work_arrangement,effective_from:new Date().toISOString().slice(0,10)}:null;
-  if(entity==="employees"){ delete values.department_id; delete values.employment_type; delete values.work_arrangement; delete values.source_applicant_id; }
+  const assignment=entity==="employees"?{department_id:values.department_id,position_id:values.position_id,employment_type:values.employment_type,work_arrangement:values.work_arrangement,effective_from:new Date().toISOString().slice(0,10)}:null;
+  if(entity==="employees"){
+    const {data:position}=await ctx.db.from("positions").select("id,department_id").eq("id",String(values.position_id)).eq("organization_id",ctx.organizationId).eq("status","active").maybeSingle();
+    if(!position||position.department_id!==values.department_id)return {ok:false,message:"Select an active position in the chosen department.",fieldErrors:{position_id:"Position and department must match"}};
+    delete values.department_id; delete values.position_id; delete values.employment_type; delete values.work_arrangement; delete values.source_applicant_id;
+  }
   const {data:before}=await ctx.db.from(tableByEntity[entity]).select("*").eq("id",id).eq("organization_id",ctx.organizationId).maybeSingle();
   if(!before)return {ok:false,message:"The record was not found or access is restricted."};
   const {error}=await ctx.db.from(tableByEntity[entity]).update(values).eq("id",id).eq("organization_id",ctx.organizationId);
   if(error) return {ok:false,message:error.message};
   if(entity==="employees"&&assignment?.department_id){
     const {data:current}=await ctx.db.from("employment_records").select("*").eq("employee_id",id).eq("is_current",true).maybeSingle();
-    const changed=!current||current.department_id!==assignment.department_id||current.employment_type!==assignment.employment_type||current.work_arrangement!==assignment.work_arrangement;
+    const changed=!current||current.department_id!==assignment.department_id||current.position_id!==assignment.position_id||current.employment_type!==assignment.employment_type||current.work_arrangement!==assignment.work_arrangement;
     if(changed){
       if(current) await ctx.db.from("employment_records").update({is_current:false,effective_to:new Date(Date.now()-86400000).toISOString().slice(0,10)}).eq("id",current.id);
       const {data:next}=await ctx.db.from("employment_records").insert({employee_id:id,...assignment,is_current:true}).select("id").single();

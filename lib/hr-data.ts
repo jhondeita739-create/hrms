@@ -114,12 +114,30 @@ export async function getResource(
     const { data, error } = await db
       .from("employees")
       .select(
-        "id,employee_number,user_id,first_name,middle_name,last_name,work_email,personal_email,phone,hire_date,employment_status,employment_records!employment_records_employee_id_fkey(id,department_id,employment_type,work_arrangement,departments(name),positions(title),is_current)",
+        "id,employee_number,user_id,source_applicant_id,first_name,middle_name,last_name,work_email,personal_email,phone,hire_date,employment_status,employment_records!employment_records_employee_id_fkey(id,department_id,position_id,employment_type,work_arrangement,departments(name),positions(title),is_current)",
       )
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     const rows = (data || []) as unknown as Raw[];
+    const sourceApplicantIds = rows
+      .map((row) => String(row.source_applicant_id || ""))
+      .filter(Boolean);
+    const { data: hiredApplications } = sourceApplicantIds.length
+      ? await db
+          .from("job_applications")
+          .select("applicant_id,hired_at,applied_at,job_vacancies(title)")
+          .in("applicant_id", sourceApplicantIds)
+          .eq("application_status", "hired")
+          .order("hired_at", { ascending: false, nullsFirst: false })
+      : { data: [] };
+    const hiredRoleByApplicant = new Map<string, string>();
+    for (const application of (hiredApplications || []) as unknown as Raw[]) {
+      const applicantId = String(application.applicant_id || "");
+      const vacancy = application.job_vacancies as Raw | undefined;
+      if (applicantId && !hiredRoleByApplicant.has(applicantId) && vacancy?.title)
+        hiredRoleByApplicant.set(applicantId, String(vacancy.title));
+    }
     const avatarUrls = await getProfileImageUrlMap(
       rows.map((row) => String(row.user_id || "")),
     );
@@ -134,7 +152,12 @@ export async function getResource(
         avatar_url: avatarUrls.get(String(r.user_id || "")) || null,
         department: String((current?.departments as Raw)?.name || "Unassigned"),
         department_id: String(current?.department_id || ""),
-        position: String((current?.positions as Raw)?.title || "Unassigned"),
+        position_id: String(current?.position_id || ""),
+        position: String(
+          (current?.positions as Raw)?.title ||
+            hiredRoleByApplicant.get(String(r.source_applicant_id || "")) ||
+            "Position pending",
+        ),
         employment_type: String(current?.employment_type || "Full-time"),
         work_arrangement: String(current?.work_arrangement || "On-site"),
         employment_records: undefined,
@@ -192,7 +215,7 @@ export async function getResource(
 }
 
 export async function getOptions(
-  kind: "departments" | "employees" | "document_types" | "vacancies",
+  kind: "departments" | "positions" | "employees" | "document_types" | "vacancies",
 ): Promise<FieldOption[]> {
   if (!isSupabaseConfigured()) {
     if (kind === "departments")
@@ -205,6 +228,11 @@ export async function getOptions(
     if (kind === "employees")
       return demoData.employees.map((x) => ({
         label: String(x.name),
+        value: x.id,
+      }));
+    if (kind === "positions")
+      return demoData.vacancies.map((x) => ({
+        label: String(x.title),
         value: x.id,
       }));
     if (kind === "vacancies")
@@ -238,6 +266,17 @@ export async function getOptions(
     return (data || []).map((x) => ({
       label: `${x.first_name} ${x.last_name} · ${x.employee_number}`,
       value: x.id,
+    }));
+  }
+  if (kind === "positions") {
+    const { data } = await db
+      .from("positions")
+      .select("id,title,departments(name)")
+      .eq("status", "active")
+      .order("title");
+    return (data || []).map((position) => ({
+      label: `${position.title} · ${((position.departments as unknown as { name?: string } | null)?.name) || "No department"}`,
+      value: position.id,
     }));
   }
   if (kind === "vacancies") {
@@ -501,8 +540,7 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalytics> {
         { stage: "Applied", candidates: 86 },
         { stage: "Screening", candidates: 54 },
         { stage: "Interview", candidates: 31 },
-        { stage: "Assessment", candidates: 18 },
-        { stage: "Offer", candidates: 9 },
+        { stage: "Final Interview", candidates: 18 },
         { stage: "Hired", candidates: 6 },
       ],
       departments: [

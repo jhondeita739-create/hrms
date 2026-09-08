@@ -13,9 +13,10 @@ export default async function EmployeesPage() {
         return Boolean(data);
       })
     : Promise.resolve(false);
-  const [records, departments, canPermanentlyDelete] = await Promise.all([
+  const [records, departments, positions, canPermanentlyDelete] = await Promise.all([
     getResource("employees"),
     getOptions("departments"),
+    getOptions("positions"),
     permanentDeletePermission,
   ]);
   const config: ResourceConfig = {
@@ -61,8 +62,18 @@ export default async function EmployeesPage() {
         label: "Department",
         type: "select",
         options: departments,
+        required: true,
         section: "Organization assignment",
         helper: "Assignment changes create a new effective-dated employment record.",
+      },
+      {
+        name: "position_id",
+        label: "Position",
+        type: "select",
+        options: positions,
+        required: true,
+        section: "Organization assignment",
+        helper: "Choose a position that belongs to the selected department.",
       },
       {
         name: "work_arrangement",
