@@ -10,6 +10,7 @@ import {
   FileCheck2,
   GraduationCap,
   KeyRound,
+  Mail,
   Plus,
   Save,
   ShieldAlert,
@@ -23,6 +24,7 @@ import {
   createEmployeeRequirement,
   createEmployeeTraining,
   reviewEmployeeRequirement,
+  resendEmployeeActivation,
   setEmployeeAccessStatus,
   startEmployeePreboarding,
   updateEmployeeRequirement,
@@ -67,6 +69,8 @@ const statusTone: Record<string, string> = {
   scheduled: "bg-blue-50 text-blue-700 ring-blue-200",
   completed: "bg-emerald-50 text-emerald-700 ring-emerald-200",
   cancelled: "bg-slate-100 text-slate-600 ring-slate-200",
+  activated: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  unknown: "bg-slate-100 text-slate-600 ring-slate-200",
 };
 
 function Status({ value }: { value: string }) {
@@ -118,11 +122,21 @@ export function PreboardingWorkspace({ data }: { data: PreboardingAdminData }) {
         </div>
         <button
           type="button"
-          disabled={!data.hiredApplications.length}
-          onClick={() => setCreateOpen(true)}
+          disabled={pending}
+          onClick={() => {
+            if (data.hiredApplications.length) {
+              setCreateOpen(true);
+              return;
+            }
+            setNotice({
+              ok: true,
+              message: "All hired applicants already have temporary accounts. Select an account below to manage or resend its activation email.",
+            });
+          }}
           className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <UserPlus className="h-4 w-4" /> Create temporary account
+          <UserPlus className="h-4 w-4" />
+          {data.hiredApplications.length ? "Create temporary account" : "All accounts created"}
         </button>
       </header>
 
@@ -205,9 +219,20 @@ function AccountSummary({ account, pending, run }: { account: PreboardingAccount
           <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-brand-100 text-base font-black text-brand-700">{initials(account.employeeName)}</span>
           <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h2 className="truncate text-xl font-extrabold text-slate-900">{account.employeeName}</h2><Status value={account.accessStatus} /></div><p className="mt-1 truncate text-sm text-slate-500">{account.employeeNumber} · {account.email}</p><p className="mt-1 text-xs font-semibold text-slate-400">{account.position}</p></div>
         </div>
-        {account.accessStatus !== "permanent" && (
-          <button type="button" disabled={pending} onClick={() => run(setEmployeeAccessStatus(account.id, account.accessStatus === "suspended" ? "temporary" : "suspended"))} className={cn("inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-bold", account.accessStatus === "suspended" ? "bg-brand-50 text-brand-700" : "bg-rose-50 text-rose-700")}><ShieldAlert className="h-4 w-4" />{account.accessStatus === "suspended" ? "Restore access" : "Suspend access"}</button>
-        )}
+        <div className="flex flex-wrap justify-end gap-2">
+          {account.activationStatus !== "activated" && account.accessStatus === "temporary" && (
+            <button type="button" disabled={pending} onClick={() => run(resendEmployeeActivation(account.id))} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-brand-50 px-4 text-xs font-bold text-brand-700 hover:bg-brand-100 disabled:opacity-50"><Mail className="h-4 w-4" /> Resend activation email</button>
+          )}
+          {account.accessStatus !== "permanent" && (
+            <button type="button" disabled={pending} onClick={() => run(setEmployeeAccessStatus(account.id, account.accessStatus === "suspended" ? "temporary" : "suspended"))} className={cn("inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-bold", account.accessStatus === "suspended" ? "bg-brand-50 text-brand-700" : "bg-rose-50 text-rose-700")}><ShieldAlert className="h-4 w-4" />{account.accessStatus === "suspended" ? "Restore access" : "Suspend access"}</button>
+          )}
+        </div>
+      </div>
+      <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-5 text-xs font-semibold text-slate-500">
+        <Mail className="h-4 w-4 text-brand-500" />
+        Password setup:
+        <Status value={account.activationStatus} />
+        {account.lastSignInAt && <span>Last authentication activity {formatDate(account.lastSignInAt)}</span>}
       </div>
       <form className="mt-6 flex flex-col gap-3 rounded-2xl bg-slate-50 p-4 sm:flex-row sm:items-end" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); run(updateRequirementsDeadline(account.id, String(form.get("deadline")))); }}>
         <label className="min-w-0 flex-1 text-xs font-bold text-slate-600">Requirements deadline<input name="deadline" type="date" required defaultValue={account.requirementsDueDate} className="field-control mt-2 bg-white" /></label>

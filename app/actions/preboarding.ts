@@ -2,8 +2,10 @@
 
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { createApplicantNotification } from "@/lib/applicant-notifications";
+import { getApplicationSiteUrl } from "@/lib/site-url";
 import { createAdminClient, isAdminConfigured } from "@/lib/supabase/admin";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 
@@ -119,7 +121,7 @@ async function provisionEmployeeAuthUser(
   const fullName = [applicant.first_name, applicant.middle_name, applicant.last_name]
     .filter(Boolean)
     .join(" ");
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
+  const siteUrl = getApplicationSiteUrl();
   const { data, error } = await admin.auth.admin.inviteUserByEmail(applicant.email, {
     data: {
       full_name: fullName,
@@ -135,6 +137,70 @@ async function provisionEmployeeAuthUser(
       error: error?.message || "The temporary account invitation failed.",
     };
   return { userId: data.user.id, invitedUserId: data.user.id, error: null };
+}
+
+export async function resendEmployeeActivation(
+  lifecycleId: string,
+): Promise<PreboardingMutationResult> {
+  const parsedId = z.string().uuid().safeParse(lifecycleId);
+  const ctx = await hrContext();
+  if (!ctx || !parsedId.success)
+    return { ok: false, message: "Administrator onboarding permission is required." };
+
+  const { data: lifecycle, error: lifecycleError } = await ctx.admin
+    .from("employee_account_lifecycle")
+    .select("id,user_id,access_status,employees(work_email)")
+    .eq("id", parsedId.data)
+    .eq("organization_id", ctx.organizationId)
+    .maybeSingle();
+  if (lifecycleError || !lifecycle)
+    return { ok: false, message: "The temporary employee account was not found." };
+  if (lifecycle.access_status !== "temporary")
+    return { ok: false, message: "Only temporary accounts need an activation email." };
+
+  const employee = lifecycle.employees as unknown as { work_email?: string } | null;
+  const email = employee?.work_email?.trim();
+  if (!email)
+    return { ok: false, message: "The employee account does not have a valid email address." };
+
+  const { data: authUser, error: authError } = await ctx.admin.auth.admin.getUserById(
+    lifecycle.user_id,
+  );
+  if (authError || !authUser.user)
+    return { ok: false, message: "The Supabase authentication account was not found." };
+  if (authUser.user.user_metadata?.initial_password_set_at)
+    return { ok: true, message: "This employee has already completed password setup." };
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !anonKey)
+    return { ok: false, message: "Supabase authentication is not configured." };
+
+  const mailClient = createSupabaseClient(supabaseUrl, anonKey, {
+    auth: {
+      flowType: "implicit",
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+  const redirectTo = `${getApplicationSiteUrl()}/auth/callback?next=/account/set-password`;
+  const { error: sendError } = await mailClient.auth.signInWithOtp({
+    email,
+    options: {
+      shouldCreateUser: false,
+      emailRedirectTo: redirectTo,
+    },
+  });
+  if (sendError) return { ok: false, message: sendError.message };
+
+  await ctx.admin
+    .from("employee_account_lifecycle")
+    .update({ invited_at: new Date().toISOString() })
+    .eq("id", lifecycle.id)
+    .eq("organization_id", ctx.organizationId);
+  refreshPreboarding();
+  return { ok: true, message: `A new secure activation email was sent to ${email}.` };
 }
 
 export async function startEmployeePreboarding(
@@ -642,6 +708,148 @@ export async function archiveEmployeeTraining(
   if (error) return { ok: false, message: error.message };
   refreshPreboarding();
   return { ok: true, message: "Training schedule archived." };
+}
+
+async function isSupportedProfileImage(file: File) {
+  const bytes = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+  if (file.type === "image/jpeg")
+    return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (file.type === "image/png")
+    return [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every(
+      (value, index) => bytes[index] === value,
+    );
+  if (file.type === "image/webp")
+    return (
+      String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
+      String.fromCharCode(...bytes.slice(8, 12)) === "WEBP"
+    );
+  return false;
+}
+
+export async function uploadOwnProfileImage(
+  formData: FormData,
+): Promise<PreboardingMutationResult> {
+  if (!isSupabaseConfigured() || !isAdminConfigured())
+    return { ok: false, message: "Profile image storage is not configured." };
+  const session = await createClient();
+  const {
+    data: { user },
+  } = await session.auth.getUser();
+  if (!user) return { ok: false, message: "Sign in to update your profile image." };
+  const { data: assurance } = await session.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (assurance?.currentLevel !== "aal2")
+    return { ok: false, message: "Complete multi-factor authentication first." };
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0)
+    return { ok: false, message: "Choose a profile image." };
+  const extensionByType: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+  };
+  if (
+    !extensionByType[file.type] ||
+    file.size > 2 * 1024 * 1024 ||
+    !(await isSupportedProfileImage(file))
+  )
+    return { ok: false, message: "Use a genuine JPG, PNG, or WebP image up to 2 MB." };
+
+  const admin = createAdminClient();
+  const { data: lifecycle } = await admin
+    .from("employee_account_lifecycle")
+    .select("id,organization_id,access_status")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!lifecycle || lifecycle.access_status === "suspended")
+    return { ok: false, message: "Your employee account cannot update its profile image." };
+
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("avatar_path")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!profile) return { ok: false, message: "Your employee profile was not found." };
+
+  const path = `${user.id}/${randomUUID()}.${extensionByType[file.type]}`;
+  const { error: uploadError } = await admin.storage
+    .from("profile-images")
+    .upload(path, file, { contentType: file.type, upsert: false });
+  if (uploadError) return { ok: false, message: uploadError.message };
+
+  const { error: profileError } = await admin
+    .from("profiles")
+    .update({ avatar_path: path })
+    .eq("id", user.id);
+  if (profileError) {
+    await admin.storage.from("profile-images").remove([path]);
+    return { ok: false, message: profileError.message };
+  }
+  if (profile.avatar_path && profile.avatar_path !== path)
+    await admin.storage.from("profile-images").remove([profile.avatar_path]);
+
+  await admin.from("audit_logs").insert({
+    organization_id: lifecycle.organization_id,
+    actor_id: user.id,
+    action: profile.avatar_path ? "profile_image_replaced" : "profile_image_uploaded",
+    entity_type: "profiles",
+    entity_id: user.id,
+    metadata: { mime_type: file.type, file_size: file.size },
+  });
+  refreshPreboarding();
+  revalidatePath("/hr/profile");
+  return { ok: true, message: "Profile image updated." };
+}
+
+export async function removeOwnProfileImage(): Promise<PreboardingMutationResult> {
+  if (!isSupabaseConfigured() || !isAdminConfigured())
+    return { ok: false, message: "Profile image storage is not configured." };
+  const session = await createClient();
+  const {
+    data: { user },
+  } = await session.auth.getUser();
+  if (!user) return { ok: false, message: "Sign in to update your profile image." };
+  const { data: assurance } = await session.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (assurance?.currentLevel !== "aal2")
+    return { ok: false, message: "Complete multi-factor authentication first." };
+
+  const admin = createAdminClient();
+  const [{ data: lifecycle }, { data: profile }] = await Promise.all([
+    admin
+      .from("employee_account_lifecycle")
+      .select("organization_id,access_status")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    admin.from("profiles").select("avatar_path").eq("id", user.id).maybeSingle(),
+  ]);
+  if (!lifecycle || lifecycle.access_status === "suspended")
+    return { ok: false, message: "Your employee account cannot update its profile image." };
+  if (!profile?.avatar_path)
+    return { ok: true, message: "There is no profile image to remove." };
+
+  const { error: profileError } = await admin
+    .from("profiles")
+    .update({ avatar_path: null })
+    .eq("id", user.id);
+  if (profileError) return { ok: false, message: profileError.message };
+  const { error: storageError } = await admin.storage
+    .from("profile-images")
+    .remove([profile.avatar_path]);
+  await admin.from("audit_logs").insert({
+    organization_id: lifecycle.organization_id,
+    actor_id: user.id,
+    action: "profile_image_removed",
+    entity_type: "profiles",
+    entity_id: user.id,
+  });
+  refreshPreboarding();
+  revalidatePath("/hr/profile");
+  return {
+    ok: true,
+    message: storageError
+      ? "Profile image removed. The old storage object requires administrator cleanup."
+      : "Profile image removed.",
+  };
 }
 
 export async function uploadOwnRequirement(

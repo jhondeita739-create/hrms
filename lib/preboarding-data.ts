@@ -1,4 +1,5 @@
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
+import { createAdminClient, isAdminConfigured } from "@/lib/supabase/admin";
 
 type Raw = Record<string, unknown>;
 
@@ -42,6 +43,9 @@ export type PreboardingAccount = {
   requirementsDueDate: string;
   invitedAt: string | null;
   permanentAt: string | null;
+  activationStatus: "pending" | "activated" | "unknown";
+  lastSignInAt: string | null;
+  avatarUrl: string | null;
   requirements: PreboardingRequirement[];
   trainings: PreboardingTraining[];
 };
@@ -131,12 +135,34 @@ export async function getPreboardingAdminData(): Promise<PreboardingAdminData> {
   const usedApplications = new Set(
     rawAccounts.map((row) => String(row.job_application_id || "")).filter(Boolean),
   );
+  let authUsers = new Map<
+    string,
+    { last_sign_in_at?: string | null; initial_password_set_at?: string | null }
+  >();
+  if (isAdminConfigured() && rawAccounts.length) {
+    const admin = createAdminClient();
+    const { data } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    authUsers = new Map(
+      (data?.users || []).map((user) => [
+        user.id,
+        {
+          last_sign_in_at: user.last_sign_in_at,
+          initial_password_set_at:
+            typeof user.user_metadata?.initial_password_set_at === "string"
+              ? user.user_metadata.initial_password_set_at
+              : null,
+        },
+      ]),
+    );
+  }
+
   const accounts = rawAccounts.map((row) => {
     const employee = relation(row.employees);
     const records = ((employee?.employment_records as Raw[]) || []).filter(
       (record) => record.is_current,
     );
     const position = relation(records[0]?.positions);
+    const authUser = authUsers.get(String(row.user_id));
     return {
       id: String(row.id),
       employeeId: String(row.employee_id),
@@ -150,6 +176,13 @@ export async function getPreboardingAdminData(): Promise<PreboardingAdminData> {
       requirementsDueDate: String(row.requirements_due_date),
       invitedAt: row.invited_at ? String(row.invited_at) : null,
       permanentAt: row.permanent_at ? String(row.permanent_at) : null,
+      activationStatus: authUser
+        ? authUser.initial_password_set_at
+          ? "activated"
+          : "pending"
+        : "unknown",
+      lastSignInAt: authUser?.last_sign_in_at || null,
+      avatarUrl: null,
       requirements: ((employee?.employee_requirement_requests as Raw[]) || [])
         .filter((item) => !item.deleted_at)
         .map(requirement),
@@ -202,7 +235,7 @@ export async function getEmployeeOnboardingData(): Promise<EmployeeOnboardingDat
     .maybeSingle();
   if (error || !lifecycle) return null;
 
-  const [requirementsResult, trainingsResult, onboardingResult, notificationsResult] =
+  const [requirementsResult, trainingsResult, onboardingResult, notificationsResult, profileResult] =
     await Promise.all([
       db
         .from("employee_requirement_requests")
@@ -230,8 +263,13 @@ export async function getEmployeeOnboardingData(): Promise<EmployeeOnboardingDat
         .eq("recipient_id", user.id)
         .order("created_at", { ascending: false })
         .limit(10),
+      db
+        .from("profiles")
+        .select("avatar_path")
+        .eq("id", user.id)
+        .maybeSingle(),
     ]);
-  for (const result of [requirementsResult, trainingsResult, onboardingResult, notificationsResult]) {
+  for (const result of [requirementsResult, trainingsResult, onboardingResult, notificationsResult, profileResult]) {
     if (result.error) throw new Error(result.error.message);
   }
   const employee = relation(lifecycle.employees);
@@ -243,6 +281,14 @@ export async function getEmployeeOnboardingData(): Promise<EmployeeOnboardingDat
   const trainings = ((trainingsResult.data || []) as unknown as Raw[]).map(training);
   const taskRows = ((onboardingResult.data?.onboarding_tasks || []) as unknown as Raw[]);
   const completed = taskRows.filter((task) => task.status === "completed").length;
+  let avatarUrl: string | null = null;
+  if (profileResult.data?.avatar_path && isAdminConfigured()) {
+    const { data: signedAvatar } = await createAdminClient()
+      .storage
+      .from("profile-images")
+      .createSignedUrl(profileResult.data.avatar_path, 60 * 60);
+    avatarUrl = signedAvatar?.signedUrl || null;
+  }
 
   return {
     account: {
@@ -258,6 +304,9 @@ export async function getEmployeeOnboardingData(): Promise<EmployeeOnboardingDat
       requirementsDueDate: lifecycle.requirements_due_date,
       invitedAt: lifecycle.invited_at,
       permanentAt: lifecycle.permanent_at,
+      activationStatus: "activated",
+      lastSignInAt: user.last_sign_in_at || null,
+      avatarUrl,
       requirements,
       trainings,
     },

@@ -20,6 +20,7 @@ A workflow-centered HRMS built with Next.js, TypeScript, Supabase Auth, PostgreS
 - Public careers homepage, searchable roles, simplified applications, validated PDF resume uploads, and application tracking
 - Resume-driven screening with applicant-visible verification, stage, interview, and notification updates
 - Hired-applicant conversion with invited temporary accounts, due-dated document requirements, training release, and permanent-access promotion
+- Private employee profile-image upload, replacement, removal, and signed display URLs
 - Guided `Hire & onboard` decision that requires a completed interview and commits the hiring decision with preboarding records in one database transaction
 
 ## Supabase setup
@@ -39,6 +40,8 @@ The public candidate experience is available at `/`, `/careers`, and `/careers/t
 The searchable PDF resume is the recruitment source for education and professional history, so applicants do not re-enter information after screening. When HR verifies the resume and advances the application, the applicant can use **Track application** to see the resume verification state, current stage, interview qualification and schedule, and HR notifications. Apply `202609080009_simplify_screened_profile.sql` and `202609080010_resume_driven_screening.sql` before using this workflow.
 
 HR administrators manage hired-employee access at `/hr/preboarding`. Supabase sends the invited new hire to `/account/set-password`; their private checklist is at `/employee/onboarding`. Add `NEXT_PUBLIC_SITE_URL` for the deployed site and include `/auth/callback` in the Supabase Auth redirect allow list.
+
+Hired employees can upload, replace, or remove their profile image from `/employee/onboarding`. Apply `202609080011_employee_profile_images.sql` to create the private `profile-images` bucket. The server accepts genuine JPG, PNG, and WebP files up to 2 MB and serves them through expiring signed URLs.
 
 From an applicant profile, selecting the **Hired** stage opens the required employment start, document deadline, and training schedule form. The application cannot be moved to the dashboard's Hired column directly; successful setup creates the temporary employee account and preboarding lifecycle together. Apply `202609070006_hire_and_preboard.sql` before using this action.
 

@@ -21,6 +21,15 @@ export async function signIn(formData: FormData) {
     isEmployee = Boolean(lifecycle);
   }
 
+  if (isEmployee && data.user && !data.user.user_metadata?.initial_password_set_at) {
+    await supabase.auth.updateUser({
+      data: {
+        ...data.user.user_metadata,
+        initial_password_set_at: new Date().toISOString(),
+      },
+    });
+  }
+
   const destination = isEmployee ? "/employee/onboarding" : "/hr/dashboard";
   const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
   if (assurance?.currentLevel !== "aal2") {

@@ -120,7 +120,13 @@ export async function setInitialPassword(
       status: "error",
       message: "Verify your existing authenticator before changing this password.",
     };
-  const { error } = await supabase.auth.updateUser({ password });
+  const { error } = await supabase.auth.updateUser({
+    password,
+    data: {
+      ...user.user_metadata,
+      initial_password_set_at: new Date().toISOString(),
+    },
+  });
   if (error) return { status: "error", message: error.message };
   redirect(`/mfa/setup?next=${encodeURIComponent("/employee/onboarding")}`);
 }

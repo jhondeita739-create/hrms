@@ -3,10 +3,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useRef, useState, useTransition } from "react";
+import { FormEvent, useEffect, useRef, useState, useTransition } from "react";
 import {
   Bell,
   CalendarClock,
+  Camera,
   CheckCircle2,
   Clock3,
   Download,
@@ -15,6 +16,7 @@ import {
   KeyRound,
   LogOut,
   MapPin,
+  Trash2,
   ShieldCheck,
   UploadCloud,
   Video,
@@ -22,6 +24,8 @@ import {
 import { signOut } from "@/app/actions/account";
 import {
   getOwnRequirementDownloadUrl,
+  removeOwnProfileImage,
+  uploadOwnProfileImage,
   uploadOwnRequirement,
   type PreboardingMutationResult,
 } from "@/app/actions/preboarding";
@@ -68,7 +72,7 @@ export function EmployeeOnboardingPortal({ data }: { data: EmployeeOnboardingDat
           </Link>
           <div className="ml-auto flex min-w-0 items-center gap-3">
             <div className="hidden min-w-0 text-right sm:block"><p className="truncate text-xs font-bold text-slate-900">{account.employeeName}</p><p className="mt-0.5 truncate text-[11px] text-slate-500">{account.employeeNumber}</p></div>
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-100 text-xs font-black text-brand-700">{initials(account.employeeName)}</span>
+            <ProfileAvatar url={account.avatarUrl} name={account.employeeName} className="h-9 w-9 text-xs" />
             <Link href="/account/security" aria-label="Account security and MFA" title="Account security and MFA" className="grid h-9 w-9 place-items-center rounded-xl text-slate-500 transition-colors hover:bg-brand-50 hover:text-brand-700"><ShieldCheck className="h-[18px] w-[18px]" /></Link>
             <form action={signOut}><button type="submit" aria-label="Sign out" title="Sign out" className="grid h-9 w-9 place-items-center rounded-xl text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600"><LogOut className="h-[18px] w-[18px]" /></button></form>
           </div>
@@ -80,7 +84,10 @@ export function EmployeeOnboardingPortal({ data }: { data: EmployeeOnboardingDat
           <div className="absolute -right-24 -top-24 h-64 w-64 rounded-full bg-brand-500/20 blur-3xl" />
           <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div><div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[.14em] text-brand-300"><ShieldCheck className="h-4 w-4" />Secure employee onboarding</div><h1 className="mt-3 text-3xl font-black tracking-[-.04em] sm:text-4xl">Welcome, {account.employeeName.split(" ")[0]}</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Submit your pre-employment documents before the deadline. Your training schedule and permanent employee access unlock automatically when every required item is received on time.</p></div>
-            <div className={cn("rounded-2xl px-4 py-3 text-sm font-bold ring-1", account.accessStatus === "permanent" ? "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20" : "bg-amber-400/10 text-amber-300 ring-amber-400/20")}><KeyRound className="mr-2 inline h-4 w-4" />{account.accessStatus === "permanent" ? "Permanent employee access" : "Temporary employee access"}</div>
+            <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+              <ProfileImageEditor account={account} pending={pending} run={run} />
+              <div className={cn("rounded-2xl px-4 py-3 text-sm font-bold ring-1", account.accessStatus === "permanent" ? "bg-emerald-400/10 text-emerald-300 ring-emerald-400/20" : "bg-amber-400/10 text-amber-300 ring-amber-400/20")}><KeyRound className="mr-2 inline h-4 w-4" />{account.accessStatus === "permanent" ? "Permanent employee access" : "Temporary employee access"}</div>
+            </div>
           </div>
         </section>
 
@@ -111,6 +118,78 @@ export function EmployeeOnboardingPortal({ data }: { data: EmployeeOnboardingDat
         </div>
       </main>
     </div>
+  );
+}
+
+function ProfileAvatar({ url, name, className }: { url: string | null; name: string; className: string }) {
+  return (
+    <span
+      role="img"
+      aria-label={`${name} profile image`}
+      className={cn("grid shrink-0 place-items-center rounded-full bg-brand-100 bg-cover bg-center font-black text-brand-700 ring-2 ring-white/80", className)}
+      style={url ? { backgroundImage: `url(${JSON.stringify(url).slice(1, -1)})` } : undefined}
+    >
+      {!url && initials(name)}
+    </span>
+  );
+}
+
+function ProfileImageEditor({ account, pending, run }: { account: EmployeeOnboardingData["account"]; pending: boolean; run: (task: Promise<PreboardingMutationResult>, after?: () => void) => void }) {
+  const form = useRef<HTMLFormElement>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+
+  useEffect(() => () => {
+    if (preview) URL.revokeObjectURL(preview);
+  }, [preview]);
+
+  function clearPreview() {
+    setPreview(null);
+    form.current?.reset();
+  }
+
+  return (
+    <form
+      ref={form}
+      className="flex items-center gap-3 rounded-2xl bg-white/10 p-2.5 ring-1 ring-white/15"
+      onSubmit={(event) => {
+        event.preventDefault();
+        run(uploadOwnProfileImage(new FormData(event.currentTarget)), clearPreview);
+      }}
+    >
+      <label className="group relative cursor-pointer" title="Choose profile image">
+        <ProfileAvatar url={preview || account.avatarUrl} name={account.employeeName} className="h-14 w-14 text-sm" />
+        <span className="absolute inset-0 grid place-items-center rounded-full bg-slate-950/55 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+          <Camera className="h-5 w-5 text-white" />
+        </span>
+        <input
+          name="file"
+          type="file"
+          required
+          accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+          className="sr-only"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            setPreview(file ? URL.createObjectURL(file) : null);
+          }}
+        />
+      </label>
+      <div>
+        <p className="text-xs font-bold text-white">Profile image</p>
+        <p className="mt-0.5 text-[10px] text-slate-400">JPG, PNG or WebP · 2 MB max</p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {preview && (
+            <button disabled={pending} className="h-8 rounded-lg bg-brand-500 px-3 text-[10px] font-bold text-white disabled:opacity-50">
+              {pending ? "Uploading…" : "Save photo"}
+            </button>
+          )}
+          {account.avatarUrl && !preview && (
+            <button type="button" disabled={pending} onClick={() => run(removeOwnProfileImage())} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-white/10 px-3 text-[10px] font-bold text-rose-200 hover:bg-rose-400/15 disabled:opacity-50">
+              <Trash2 className="h-3 w-3" /> Remove
+            </button>
+          )}
+        </div>
+      </div>
+    </form>
   );
 }
 
