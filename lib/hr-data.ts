@@ -172,7 +172,7 @@ export async function getResource(
   const { data, error } = await db
     .from("employee_documents")
     .select(
-      "id,employee_id,document_type_id,title,document_number,issued_date,expiration_date,verification_status,confidentiality_level,status,file_name,employees(first_name,middle_name,last_name),document_types(name)",
+      "id,employee_id,document_type_id,title,document_number,issued_date,expiration_date,verification_status,confidentiality_level,status,file_name,created_at,updated_at,employees(first_name,middle_name,last_name),document_types(name)",
     )
     .is("deleted_at", null)
     .order("created_at", { ascending: false });

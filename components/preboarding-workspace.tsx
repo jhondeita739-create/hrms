@@ -303,7 +303,10 @@ function RequirementRow({ item, documentTypes, pending, run }: { item: Preboardi
       {item.status !== "waived" && (
         <div className="mt-4 grid gap-2 border-t border-slate-100 pt-4 sm:grid-cols-[1fr_auto]">
           <input value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Reviewer notes" className="field-control" />
-          <div className="flex flex-wrap gap-2"><button disabled={pending} onClick={() => run(reviewEmployeeRequirement(item.id, "verified", notes))} className="h-11 rounded-xl bg-emerald-50 px-3 text-xs font-bold text-emerald-700">Verify</button><button disabled={pending} onClick={() => run(reviewEmployeeRequirement(item.id, "rejected", notes))} className="h-11 rounded-xl bg-rose-50 px-3 text-xs font-bold text-rose-700">Reject</button><button disabled={pending} onClick={() => run(reviewEmployeeRequirement(item.id, "waived", notes))} className="h-11 rounded-xl bg-amber-50 px-3 text-xs font-bold text-amber-700">Waive</button></div>
+          <div>
+            {!item.documentId && <p className="mb-2 text-[11px] font-semibold text-amber-700">Awaiting an uploaded file. Use Waive only when a document is not required.</p>}
+            <div className="flex flex-wrap gap-2"><button disabled={pending || !item.documentId} title={!item.documentId ? "A document must be uploaded before verification" : "Verify submitted document"} onClick={() => run(reviewEmployeeRequirement(item.id, "verified", notes))} className="h-11 rounded-xl bg-emerald-50 px-3 text-xs font-bold text-emerald-700 disabled:cursor-not-allowed disabled:opacity-45">Verify</button><button disabled={pending || !item.documentId} title={!item.documentId ? "A document must be uploaded before rejection" : "Reject submitted document"} onClick={() => run(reviewEmployeeRequirement(item.id, "rejected", notes))} className="h-11 rounded-xl bg-rose-50 px-3 text-xs font-bold text-rose-700 disabled:cursor-not-allowed disabled:opacity-45">Reject</button><button disabled={pending} onClick={() => run(reviewEmployeeRequirement(item.id, "waived", notes))} className="h-11 rounded-xl bg-amber-50 px-3 text-xs font-bold text-amber-700 disabled:opacity-50">Waive</button></div>
+          </div>
         </div>
       )}
     </article>

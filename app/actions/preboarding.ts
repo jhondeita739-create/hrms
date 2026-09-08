@@ -498,6 +498,20 @@ export async function reviewEmployeeRequirement(
   const ctx = await hrContext();
   if (!ctx || !z.string().uuid().safeParse(requirementId).success)
     return { ok: false, message: "Requirement could not be reviewed." };
+  const { data: current, error: currentError } = await ctx.admin
+    .from("employee_requirement_requests")
+    .select("employee_id,employee_document_id")
+    .eq("id", requirementId)
+    .eq("organization_id", ctx.organizationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (currentError || !current)
+    return { ok: false, message: currentError?.message || "Requirement not found." };
+  if (status !== "waived" && !current.employee_document_id)
+    return {
+      ok: false,
+      message: "A document must be submitted before HR can review or verify this requirement. Use Waive when no file is required.",
+    };
   const { data: requirement, error } = await ctx.admin
     .from("employee_requirement_requests")
     .update({
@@ -512,6 +526,14 @@ export async function reviewEmployeeRequirement(
     .select("employee_id")
     .maybeSingle();
   if (error || !requirement) return { ok: false, message: error?.message || "Requirement not found." };
+  if (current.employee_document_id && status !== "waived") {
+    const { error: documentError } = await ctx.admin
+      .from("employee_documents")
+      .update({ verification_status: status })
+      .eq("id", current.employee_document_id)
+      .eq("organization_id", ctx.organizationId);
+    if (documentError) return { ok: false, message: documentError.message };
+  }
   const { data: lifecycle } = await ctx.admin
     .from("employee_account_lifecycle")
     .select("id")
