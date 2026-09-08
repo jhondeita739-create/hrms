@@ -457,6 +457,9 @@ export function ApplicantReviewWorkspace({
                 uploadForm.current?.reset();
               }}
             >
+              <p className="text-[11px] text-slate-500 sm:col-span-3">
+                PDF, DOC, DOCX, JPG, or PNG up to 4 MB.
+              </p>
               <label className="text-xs font-bold text-slate-600">
                 Requirement name
                 <input

@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { SettingsWorkspace } from "@/components/settings-workspace";
+import { getAdminAccessData } from "@/lib/admin-access-data";
 
 export const metadata: Metadata = { title: "Settings" };
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const accessData = await getAdminAccessData();
   return (
     <>
       <header className="mb-8">
@@ -17,7 +19,7 @@ export default function SettingsPage() {
           Configure security, storage, notifications, and shared HR administration.
         </p>
       </header>
-      <SettingsWorkspace />
+      <SettingsWorkspace accessData={accessData} />
     </>
   );
 }

@@ -232,7 +232,7 @@ export async function hireAndStartEmployeePreboarding(
     ctx.admin
       .from("job_applications")
       .select(
-        "id,applicant_id,application_status,applicants(first_name,middle_name,last_name,email),job_vacancies(title),interviews(status)",
+        "id,applicant_id,application_status,profile_completion_status,applicants(first_name,middle_name,last_name,email),job_vacancies(title),interviews(status,interview_evaluations(id))",
       )
       .eq("id", parsed.data.applicationId)
       .eq("organization_id", ctx.organizationId)
@@ -253,9 +253,35 @@ export async function hireAndStartEmployeePreboarding(
       ok: false,
       message: "This applicant is already hired. Use Employee preboarding to create or recover their account.",
     };
+  if (application.profile_completion_status !== "completed")
+    return {
+      ok: false,
+      message: "The applicant must complete their screened profile before they can be hired.",
+    };
 
-  const interviews = application.interviews as unknown as Array<{ status?: string }> | null;
-  if (!interviews?.some((interview) => interview.status === "completed"))
+  const { data: verifiedResume } = await ctx.admin
+    .from("applicant_documents")
+    .select("id")
+    .eq("job_application_id", application.id)
+    .eq("document_type", "resume")
+    .eq("verification_status", "verified")
+    .is("deleted_at", null)
+    .limit(1)
+    .maybeSingle();
+  if (!verifiedResume)
+    return { ok: false, message: "Verify the applicant's resume before hiring." };
+
+  const interviews = application.interviews as unknown as Array<{
+    status?: string;
+    interview_evaluations?: Array<{ id?: string }>;
+  }> | null;
+  if (
+    !interviews?.some(
+      (interview) =>
+        interview.status === "completed" &&
+        Boolean(interview.interview_evaluations?.length),
+    )
+  )
     return {
       ok: false,
       message: "Complete and evaluate an interview before hiring this applicant.",
@@ -644,8 +670,8 @@ export async function uploadOwnRequirement(
   if (!(file instanceof File) || file.size === 0)
     return { ok: false, message: "Choose a document to upload." };
   const allowed = new Set(["application/pdf", "image/jpeg", "image/png"]);
-  if (!allowed.has(file.type) || file.size > 10 * 1024 * 1024)
-    return { ok: false, message: "Use a PDF, JPG, or PNG file up to 10 MB." };
+  if (!allowed.has(file.type) || file.size > 4 * 1024 * 1024)
+    return { ok: false, message: "Use a PDF, JPG, or PNG file up to 4 MB." };
 
   const admin = createAdminClient();
   const { data: lifecycle } = await admin

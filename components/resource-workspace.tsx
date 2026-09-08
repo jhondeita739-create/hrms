@@ -871,6 +871,12 @@ export function ResourceWorkspace({
                               <input
                                 id={field.name}
                                 type={field.type}
+                                inputMode={
+                                  field.type === "tel" ? "numeric" : undefined
+                                }
+                                pattern={
+                                  field.type === "tel" ? "[0-9]{7,15}" : undefined
+                                }
                                 step={
                                   field.type === "number" ? "any" : undefined
                                 }

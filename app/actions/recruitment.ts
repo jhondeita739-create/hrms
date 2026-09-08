@@ -10,19 +10,32 @@ export type RecruitmentMutationResult =
   | { ok: true; message: string; url?: string }
   | { ok: false; message: string };
 
-async function context() {
+const accessMessage =
+  "Sign in with MFA using an HR role that can manage applicants.";
+
+async function context(permission: "applicants.edit" | "applicants.view" = "applicants.edit") {
   if (!isSupabaseConfigured()) return null;
   const db = await createClient();
   const {
     data: { user },
   } = await db.auth.getUser();
   if (!user) return null;
-  const { data: profile } = await db
-    .from("profiles")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single();
-  if (!profile?.organization_id) return null;
+  const [{ data: profile }, { data: assurance }, { data: allowed }] =
+    await Promise.all([
+      db
+        .from("profiles")
+        .select("organization_id")
+        .eq("id", user.id)
+        .single(),
+      db.auth.mfa.getAuthenticatorAssuranceLevel(),
+      db.rpc("has_permission", { permission_key: permission }),
+    ]);
+  if (
+    !profile?.organization_id ||
+    assurance?.currentLevel !== "aal2" ||
+    !allowed
+  )
+    return null;
   return { db, user, organizationId: profile.organization_id as string };
 }
 
@@ -46,7 +59,7 @@ export async function updateApplicationStage(
   const parsed = stageInput.safeParse(raw);
   if (!parsed.success) return { ok: false, message: "Select a valid stage." };
   const ctx = await context();
-  if (!ctx) return { ok: false, message: "Sign in to update this application." };
+  if (!ctx) return { ok: false, message: accessMessage };
 
   const { data: application } = await ctx.db
     .from("job_applications")
@@ -66,6 +79,8 @@ export async function updateApplicationStage(
     .eq("is_active", true)
     .maybeSingle();
   if (!stage) return { ok: false, message: "Recruitment stage is unavailable." };
+  if (application.current_stage_id === stage.id)
+    return { ok: false, message: `The application is already in ${stage.name}.` };
 
   const { data: screeningStage } = await ctx.db
     .from("recruitment_stages")
@@ -86,51 +101,61 @@ export async function updateApplicationStage(
     stage.stage_order > Number(screeningStage?.stage_order ?? 20);
   const requestProfile =
     passedResumeScreening && application.profile_completion_status === "not_requested";
+  if (isHired)
+    return {
+      ok: false,
+      message: "Use Hire & onboard so the employee record and temporary account are created safely.",
+    };
+  if ((isRejected || isWithdrawn || application.application_status !== "in_progress") && (parsed.data.reason || "").trim().length < 3)
+    return {
+      ok: false,
+      message: "Add a decision reason before closing or reopening an application.",
+    };
+  if (passedResumeScreening) {
+    const { data: resume } = await ctx.db
+      .from("applicant_documents")
+      .select("verification_status")
+      .eq("job_application_id", application.id)
+      .eq("document_type", "resume")
+      .is("deleted_at", null)
+      .order("uploaded_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (resume?.verification_status !== "verified")
+      return {
+        ok: false,
+        message: "Verify the applicant's resume before moving beyond Resume Screening.",
+      };
+  }
   const profileToken = requestProfile
     ? `${randomUUID().replaceAll("-", "")}${randomUUID().replaceAll("-", "")}`
     : null;
-  const nextStatus = isHired
-    ? "hired"
-    : isRejected
-      ? "rejected"
-      : isWithdrawn
-        ? "withdrawn"
-        : "in_progress";
-  const update = {
-    current_stage_id: stage.id,
-    application_status: nextStatus,
-    final_result: isHired ? "hired" : isRejected ? "rejected" : null,
-    rejection_reason: isRejected ? parsed.data.reason || "Not selected" : null,
-    hired_at: isHired ? new Date().toISOString() : null,
-    withdrawn_at: isWithdrawn ? new Date().toISOString() : null,
-    ...(requestProfile && profileToken
-      ? {
-          profile_completion_status: "requested",
-          profile_completion_token_hash: createHash("sha256").update(profileToken).digest("hex"),
-          profile_completion_token_expires_at: new Date(
-            Date.now() + 14 * 24 * 60 * 60 * 1000,
-          ).toISOString(),
-        }
-      : {}),
-  };
-  const { error } = await ctx.db
-    .from("job_applications")
-    .update(update)
-    .eq("id", application.id)
-    .eq("organization_id", ctx.organizationId);
-  if (error) return { ok: false, message: error.message };
-  await ctx.db.from("application_stage_history").insert({
-    job_application_id: application.id,
-    from_stage_id: application.current_stage_id,
-    to_stage_id: stage.id,
-    changed_by: ctx.user.id,
-    reason: parsed.data.reason || `Moved to ${stage.name}`,
-  });
-  if (isHired)
-    await ctx.db
-      .from("applicants")
-      .update({ status: "hired" })
-      .eq("id", application.applicant_id);
+  const profileTokenExpiresAt = requestProfile
+    ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
+    : null;
+  const { error: transitionError } = await ctx.db.rpc(
+    "transition_job_application",
+    {
+      application_uuid: application.id,
+      target_stage_uuid: stage.id,
+      reason_text: parsed.data.reason || null,
+      profile_token_hash_value: profileToken
+        ? createHash("sha256").update(profileToken).digest("hex")
+        : null,
+      profile_token_expires_value: profileTokenExpiresAt,
+    },
+  );
+  if (transitionError) {
+    const migrationMissing =
+      transitionError.code === "PGRST202" ||
+      transitionError.message.includes("Could not find the function");
+    return {
+      ok: false,
+      message: migrationMissing
+        ? "Run the complete 202609080008_admin_access_permissions.sql migration in Supabase, then try again."
+        : transitionError.message,
+    };
+  }
 
   const applicant = application.applicants as unknown as {
     first_name?: string;
@@ -141,7 +166,8 @@ export async function updateApplicationStage(
   const profileUrl = profileToken
     ? `${siteUrl}/careers/track?token=${encodeURIComponent(profileToken)}`
     : null;
-  if (applicant?.email && (requestProfile || interviewStage || isHired || isRejected)) {
+  let notificationWarning = "";
+  if (applicant?.email && (requestProfile || interviewStage || isRejected)) {
     const subject = interviewStage
       ? `Interview update for ${vacancy?.title || "your application"}`
       : isHired
@@ -156,36 +182,26 @@ export async function updateApplicationStage(
         : isRejected
           ? `Hi ${applicant.first_name || "there"}, thank you for your interest in ${vacancy?.title || "the position"}. After review, your application was not selected for this role. Your information remains available to the HR team for appropriate future opportunities.`
           : `Hi ${applicant.first_name || "there"}, your resume passed the initial screening for ${vacancy?.title || "the position"}. Please complete your professional and education profile within 14 days using this secure link: ${profileUrl}. This screening result is not yet an interview invitation; HR will notify you separately if you qualify for an interview.`;
-    await createApplicantNotification(ctx, {
-      applicantId: application.applicant_id,
-      applicationId: application.id,
-      recipient: applicant.email,
-      eventType: interviewStage
-        ? "qualified_for_interview"
-        : isHired
-          ? "hired"
+    try {
+      await createApplicantNotification(ctx, {
+        applicantId: application.applicant_id,
+        applicationId: application.id,
+        recipient: applicant.email,
+        eventType: interviewStage
+          ? "qualified_for_interview"
           : isRejected
             ? "rejected"
             : "resume_screening_passed",
-      subject,
-      body,
-    });
+        subject,
+        body,
+      });
+    } catch {
+      notificationWarning = " The stage was saved, but the notification could not be queued.";
+    }
   }
 
-  await ctx.db.from("audit_logs").insert({
-    organization_id: ctx.organizationId,
-    actor_id: ctx.user.id,
-    action: "application_stage_update",
-    entity_type: "job_applications",
-    entity_id: application.id,
-    before_values: {
-      current_stage_id: application.current_stage_id,
-      application_status: application.application_status,
-    },
-    after_values: update,
-  });
   refreshApplicant(application.applicant_id);
-  return { ok: true, message: `Application moved to ${stage.name}.` };
+  return { ok: true, message: `Application moved to ${stage.name}.${notificationWarning}` };
 }
 
 const interviewInput = z
@@ -213,14 +229,33 @@ export async function createInterview(
   if (!parsed.success)
     return { ok: false, message: parsed.error.issues[0]?.message || "Check the interview details." };
   const ctx = await context();
-  if (!ctx) return { ok: false, message: "Sign in to schedule interviews." };
+  if (!ctx) return { ok: false, message: accessMessage };
   const { data: application } = await ctx.db
     .from("job_applications")
-    .select("id,applicant_id,profile_completion_status,applicants(first_name,email),job_vacancies(title)")
+    .select("id,applicant_id,application_status,profile_completion_status,recruitment_stages(name),applicants(first_name,email),job_vacancies(title)")
     .eq("id", parsed.data.applicationId)
     .eq("organization_id", ctx.organizationId)
     .maybeSingle();
   if (!application) return { ok: false, message: "Application could not be found." };
+  if (application.application_status !== "in_progress")
+    return { ok: false, message: "Interviews can be scheduled only for an active application." };
+  const currentStage = application.recruitment_stages as unknown as { name?: string } | null;
+  if (!currentStage?.name?.toLowerCase().includes("interview"))
+    return {
+      ok: false,
+      message: "Move the application to an interview stage before scheduling the interview.",
+    };
+  const { data: verifiedResume } = await ctx.db
+    .from("applicant_documents")
+    .select("id")
+    .eq("job_application_id", application.id)
+    .eq("document_type", "resume")
+    .eq("verification_status", "verified")
+    .is("deleted_at", null)
+    .limit(1)
+    .maybeSingle();
+  if (!verifiedResume)
+    return { ok: false, message: "Verify the applicant's resume before scheduling an interview." };
   const { applicationId, type, scheduledStart, scheduledEnd, meetingUrl, ...rest } =
     parsed.data;
   const { error } = await ctx.db.from("interviews").insert({
@@ -266,17 +301,23 @@ export async function createInterview(
     : application.profile_completion_status === "requested"
       ? " Use the secure profile-completion link from your qualification update if your details are still incomplete."
       : "";
-  if (applicant?.email)
-    await createApplicantNotification(ctx, {
-      applicantId: application.applicant_id,
-      applicationId,
-      recipient: applicant.email,
-      eventType: "interview_scheduled",
-      subject: `Interview scheduled for ${vacancy?.title || "your application"}`,
-      body: `Hi ${applicant.first_name || "there"}, you are qualified for an interview. Your ${type} is scheduled for ${new Date(scheduledStart).toLocaleString("en-PH", { timeZone: rest.timezone })}. ${rest.location ? `Location: ${rest.location}.` : ""} ${meetingUrl ? `Meeting link: ${meetingUrl}.` : ""}${profileInstruction}`.trim(),
-    });
+  let notificationWarning = "";
+  if (applicant?.email) {
+    try {
+      await createApplicantNotification(ctx, {
+        applicantId: application.applicant_id,
+        applicationId,
+        recipient: applicant.email,
+        eventType: "interview_scheduled",
+        subject: `Interview scheduled for ${vacancy?.title || "your application"}`,
+        body: `Hi ${applicant.first_name || "there"}, you are qualified for an interview. Your ${type} is scheduled for ${new Date(scheduledStart).toLocaleString("en-PH", { timeZone: rest.timezone })}. ${rest.location ? `Location: ${rest.location}.` : ""} ${meetingUrl ? `Meeting link: ${meetingUrl}.` : ""}${profileInstruction}`.trim(),
+      });
+    } catch {
+      notificationWarning = " The interview was saved, but the notification could not be queued.";
+    }
+  }
   refreshApplicant(application.applicant_id);
-  return { ok: true, message: "Interview scheduled and applicant notified." };
+  return { ok: true, message: `Interview scheduled.${notificationWarning || " Applicant notified."}` };
 }
 
 export async function sendApplicantProfileRequest(
@@ -287,7 +328,7 @@ export async function sendApplicantProfileRequest(
   if (!z.string().uuid().safeParse(applicationId).success)
     return { ok: false, message: "Application could not be found." };
   const ctx = await context();
-  if (!ctx) return { ok: false, message: "Sign in to send a profile request." };
+  if (!ctx) return { ok: false, message: accessMessage };
 
   const { data: application } = await ctx.db
     .from("job_applications")
@@ -298,6 +339,11 @@ export async function sendApplicantProfileRequest(
   if (!application) return { ok: false, message: "Application could not be found." };
   if (application.profile_completion_status === "completed")
     return { ok: false, message: "The applicant has already completed this profile." };
+  if (application.profile_completion_status !== "requested")
+    return {
+      ok: false,
+      message: "Move the application beyond Resume Screening before sending a profile link.",
+    };
   if (application.application_status !== "in_progress")
     return { ok: false, message: "Profile requests are available only for active applications." };
 
@@ -324,14 +370,21 @@ export async function sendApplicantProfileRequest(
 
   const vacancy = application.job_vacancies as unknown as { title?: string } | null;
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
-  await createApplicantNotification(ctx, {
-    applicantId: application.applicant_id,
-    applicationId: application.id,
-    recipient: applicant.email,
-    eventType: "profile_completion_requested",
-    subject: `Complete your applicant profile for ${vacancy?.title || "your application"}`,
-    body: `Hi ${applicant.first_name || "there"}, please complete your professional and education profile within 14 days using this secure single-use link: ${siteUrl}/careers/track?token=${encodeURIComponent(profileToken)}.`,
-  });
+  try {
+    await createApplicantNotification(ctx, {
+      applicantId: application.applicant_id,
+      applicationId: application.id,
+      recipient: applicant.email,
+      eventType: "profile_completion_requested",
+      subject: `Complete your applicant profile for ${vacancy?.title || "your application"}`,
+      body: `Hi ${applicant.first_name || "there"}, please complete your professional and education profile within 14 days using this secure single-use link: ${siteUrl}/careers/track?token=${encodeURIComponent(profileToken)}.`,
+    });
+  } catch {
+    return {
+      ok: false,
+      message: "The secure link was created, but its notification could not be queued. Try Send new link again.",
+    };
+  }
   refreshApplicant(application.applicant_id);
   return { ok: true, message: "A new secure profile link was sent to the applicant." };
 }
@@ -346,7 +399,7 @@ export async function updateInterview(
   if (!z.string().uuid().safeParse(interviewId).success || !parsed.success)
     return { ok: false, message: parsed.success ? "Invalid interview." : parsed.error.issues[0]?.message || "Check the interview details." };
   const ctx = await context();
-  if (!ctx) return { ok: false, message: "Sign in to update interviews." };
+  if (!ctx) return { ok: false, message: accessMessage };
   const { data: interview } = await ctx.db
     .from("interviews")
     .select("id,job_application_id,job_applications(applicant_id)")
@@ -473,11 +526,29 @@ export async function generateAiAssessment(
     return { ok: false, message: "Application could not be assessed." };
   const { data: application } = await ctx.db
     .from("job_applications")
-    .select("id,applicant_id,job_vacancy_id,cover_letter")
+    .select("id,applicant_id,job_vacancy_id,cover_letter,application_status,profile_completion_status")
     .eq("id", applicationId)
     .eq("organization_id", ctx.organizationId)
     .maybeSingle();
   if (!application) return { ok: false, message: "Application could not be found." };
+  if (application.application_status !== "in_progress")
+    return { ok: false, message: "Only active applications can be assessed." };
+  if (application.profile_completion_status !== "completed")
+    return {
+      ok: false,
+      message: "Wait until the applicant completes their screened profile before generating a match assessment.",
+    };
+  const { data: verifiedResume } = await ctx.db
+    .from("applicant_documents")
+    .select("id")
+    .eq("job_application_id", application.id)
+    .eq("document_type", "resume")
+    .eq("verification_status", "verified")
+    .is("deleted_at", null)
+    .limit(1)
+    .maybeSingle();
+  if (!verifiedResume)
+    return { ok: false, message: "Verify the applicant's resume before generating a match assessment." };
   const [applicantResult, vacancyResult, experienceResult, educationResult] =
     await Promise.all([
       ctx.db
@@ -661,7 +732,7 @@ export async function getApplicantDocumentDownloadUrl(
 ): Promise<RecruitmentMutationResult> {
   if (!isSupabaseConfigured())
     return { ok: false, message: "Downloads require a connected Supabase project." };
-  const ctx = await context();
+  const ctx = await context("applicants.view");
   if (!ctx || !z.string().uuid().safeParse(documentId).success)
     return { ok: false, message: "Document could not be downloaded." };
   const { data: document } = await ctx.db
@@ -703,8 +774,8 @@ export async function addApplicantDocument(
     "image/jpeg",
     "image/png",
   ]);
-  if (!allowed.has(file.type) || file.size > 10 * 1024 * 1024)
-    return { ok: false, message: "Use a PDF, DOC, DOCX, JPG, or PNG file up to 10 MB." };
+  if (!allowed.has(file.type) || file.size > 4 * 1024 * 1024)
+    return { ok: false, message: "Use a PDF, DOC, DOCX, JPG, or PNG file up to 4 MB." };
   const { data: application } = await ctx.db
     .from("job_applications")
     .select("id,applicant_id")

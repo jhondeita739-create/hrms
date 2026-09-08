@@ -13,7 +13,7 @@ const optionalNumber = z.preprocess((v)=>v===""||v==null?null:Number(v),z.number
 const schemas = {
   applicants: z.object({
     first_name:z.string().trim().min(1,"First name is required"), last_name:z.string().trim().min(1,"Last name is required"),
-    email:z.email("Enter a valid email"), phone:z.string().trim().min(7,"Enter a valid phone number"), alternative_phone:optionalText,
+    email:z.email("Enter a valid email"), phone:z.string().trim().regex(/^\d{7,15}$/,"Use 7 to 15 numbers only"), alternative_phone:z.union([z.string().trim().regex(/^\d{7,15}$/,"Use 7 to 15 numbers only"),z.literal("")]).optional().transform((v)=>v||null),
     current_job_title:optionalText,current_employer:optionalText,years_experience:optionalNumber,expected_salary:optionalNumber,
     availability_date:optionalText,source:z.string().trim().min(1),status:z.enum(["active","hired","withdrawn","archived"]).default("active"),job_vacancy_id:optionalText,
   }),
@@ -35,21 +35,33 @@ const schemas = {
 const tableByEntity: Record<EntityKey,string> = {applicants:"applicants",vacancies:"job_vacancies",employees:"employees",onboarding:"employee_onboarding",documents:"employee_documents",departments:"departments"};
 const pathByEntity: Record<EntityKey,string> = {applicants:"/hr/recruitment/applicants",vacancies:"/hr/recruitment/vacancies",employees:"/hr/employees",onboarding:"/hr/onboarding",documents:"/hr/records",departments:"/hr/organization"};
 const prefixByEntity: Partial<Record<EntityKey,string>> = {applicants:"APP",vacancies:"VAC",employees:"EMP"};
+const permissions:Record<EntityKey,{create:string;update:string;archive:string}>={
+  applicants:{create:"applicants.create",update:"applicants.edit",archive:"applicants.archive"},
+  vacancies:{create:"vacancies.create",update:"vacancies.edit",archive:"vacancies.archive"},
+  employees:{create:"employees.create",update:"employees.edit",archive:"employees.archive"},
+  onboarding:{create:"onboarding.manage",update:"onboarding.manage",archive:"onboarding.manage"},
+  documents:{create:"documents.manage",update:"documents.manage",archive:"documents.manage"},
+  departments:{create:"organization.manage",update:"organization.manage",archive:"organization.manage"},
+};
 
-async function context() {
+async function context(permission:string) {
   if (!isSupabaseConfigured()) return null;
   const db=await createClient();
   const {data:{user}}=await db.auth.getUser();
   if(!user) return null;
-  const {data:profile}=await db.from("profiles").select("organization_id").eq("id",user.id).single();
-  if(!profile?.organization_id) return null;
+  const [{data:profile},{data:assurance},{data:allowed}]=await Promise.all([
+    db.from("profiles").select("organization_id").eq("id",user.id).single(),
+    db.auth.mfa.getAuthenticatorAssuranceLevel(),
+    db.rpc("has_permission",{permission_key:permission}),
+  ]);
+  if(!profile?.organization_id||assurance?.currentLevel!=="aal2"||!allowed) return null;
   return {db,user,organizationId:profile.organization_id as string};
 }
 function numberFor(prefix:string) { return `${prefix}-${new Date().toISOString().slice(2,10).replaceAll("-","")}-${randomUUID().slice(0,4).toUpperCase()}`; }
 function fieldErrors(error:z.ZodError) { const output:Record<string,string>={}; for(const issue of error.issues) output[String(issue.path[0]||"form")]=issue.message; return output; }
 
 export async function createRecord(entity:EntityKey,raw:Record<string,unknown>):Promise<MutationResult>{
-  const ctx=await context(); if(!ctx) return {ok:false,message:"Connect Supabase and sign in to save changes."};
+  const ctx=await context(permissions[entity].create); if(!ctx) return {ok:false,message:"Sign in with MFA using an HR role allowed to create this record."};
   const parsed=schemas[entity].safeParse(raw); if(!parsed.success) return {ok:false,message:"Please correct the highlighted fields.",fieldErrors:fieldErrors(parsed.error)};
   const values:Record<string,unknown>={...parsed.data,organization_id:ctx.organizationId};
   if(entity!=="departments") values.created_by=ctx.user.id;
@@ -59,10 +71,24 @@ export async function createRecord(entity:EntityKey,raw:Record<string,unknown>):
   if(entity==="employees") { delete values.department_id; delete values.employment_type; delete values.work_arrangement; }
   const {data,error}=await ctx.db.from(tableByEntity[entity]).insert(values).select("id").single();
   if(error) return {ok:false,message:error.code==="23505"?"A record with these details already exists.":error.message};
-  if(entity==="employees") await ctx.db.from("employment_records").insert({employee_id:data.id,department_id:employment.department_id,employment_type:employment.employment_type,work_arrangement:employment.work_arrangement,effective_from:employment.hire_date,is_current:true});
+  if(entity==="employees") {
+    const {error:employmentError}=await ctx.db.from("employment_records").insert({employee_id:data.id,department_id:employment.department_id,employment_type:employment.employment_type,work_arrangement:employment.work_arrangement,effective_from:employment.hire_date,is_current:true});
+    if(employmentError){
+      await ctx.db.from("employees").update({employment_status:"inactive",deleted_at:new Date().toISOString()}).eq("id",data.id).eq("organization_id",ctx.organizationId);
+      return {ok:false,message:`Employee creation was rolled back: ${employmentError.message}`};
+    }
+  }
   if(entity==="applicants"&&applicationVacancy){
     const {data:stage}=await ctx.db.from("recruitment_stages").select("id").eq("organization_id",ctx.organizationId).eq("stage_type","active").order("stage_order").limit(1).maybeSingle();
-    await ctx.db.from("job_applications").insert({organization_id:ctx.organizationId,application_number:numberFor("APL"),applicant_id:data.id,job_vacancy_id:applicationVacancy,current_stage_id:stage?.id,application_status:"in_progress"});
+    if(!stage){
+      await ctx.db.from("applicants").update({status:"archived",deleted_at:new Date().toISOString()}).eq("id",data.id).eq("organization_id",ctx.organizationId);
+      return {ok:false,message:"Applicant creation was rolled back because no active recruitment stage is configured."};
+    }
+    const {error:applicationError}=await ctx.db.from("job_applications").insert({organization_id:ctx.organizationId,application_number:numberFor("APL"),applicant_id:data.id,job_vacancy_id:applicationVacancy,current_stage_id:stage.id,application_status:"in_progress"});
+    if(applicationError){
+      await ctx.db.from("applicants").update({status:"archived",deleted_at:new Date().toISOString()}).eq("id",data.id).eq("organization_id",ctx.organizationId);
+      return {ok:false,message:`Applicant creation was rolled back: ${applicationError.message}`};
+    }
   }
   await ctx.db.from("audit_logs").insert({organization_id:ctx.organizationId,actor_id:ctx.user.id,action:"create",entity_type:entity,entity_id:data.id,after_values:values});
   revalidatePath(pathByEntity[entity]); revalidatePath("/hr/dashboard");
@@ -74,14 +100,15 @@ export async function createRecord(entity:EntityKey,raw:Record<string,unknown>):
 }
 
 export async function updateRecord(entity:EntityKey,id:string,raw:Record<string,unknown>):Promise<MutationResult>{
-  const ctx=await context(); if(!ctx) return {ok:false,message:"Connect Supabase and sign in to save changes."};
+  const ctx=await context(permissions[entity].update); if(!ctx) return {ok:false,message:"Sign in with MFA using an HR role allowed to update this record."};
   if(!z.string().uuid().safeParse(id).success) return {ok:false,message:"Invalid record identifier."};
   const parsed=schemas[entity].safeParse(raw); if(!parsed.success) return {ok:false,message:"Please correct the highlighted fields.",fieldErrors:fieldErrors(parsed.error)};
   const values:Record<string,unknown>={...parsed.data}; delete values.job_vacancy_id;
   const assignment=entity==="employees"?{department_id:values.department_id,employment_type:values.employment_type,work_arrangement:values.work_arrangement,effective_from:new Date().toISOString().slice(0,10)}:null;
   if(entity==="employees"){ delete values.department_id; delete values.employment_type; delete values.work_arrangement; delete values.source_applicant_id; }
-  const {data:before}=await ctx.db.from(tableByEntity[entity]).select("*").eq("id",id).maybeSingle();
-  const {error}=await ctx.db.from(tableByEntity[entity]).update(values).eq("id",id);
+  const {data:before}=await ctx.db.from(tableByEntity[entity]).select("*").eq("id",id).eq("organization_id",ctx.organizationId).maybeSingle();
+  if(!before)return {ok:false,message:"The record was not found or access is restricted."};
+  const {error}=await ctx.db.from(tableByEntity[entity]).update(values).eq("id",id).eq("organization_id",ctx.organizationId);
   if(error) return {ok:false,message:error.message};
   if(entity==="employees"&&assignment?.department_id){
     const {data:current}=await ctx.db.from("employment_records").select("*").eq("employee_id",id).eq("is_current",true).maybeSingle();
@@ -97,20 +124,33 @@ export async function updateRecord(entity:EntityKey,id:string,raw:Record<string,
 }
 
 export async function archiveRecord(entity:EntityKey,id:string):Promise<MutationResult>{
-  const ctx=await context(); if(!ctx) return {ok:false,message:"Connect Supabase and sign in to save changes."};
+  const ctx=await context(permissions[entity].archive); if(!ctx) return {ok:false,message:"Sign in with MFA using an HR role allowed to archive this record."};
   if(!z.string().uuid().safeParse(id).success) return {ok:false,message:"Invalid record identifier."};
-  const archive=entity==="departments"?{status:"inactive"}:entity==="vacancies"?{status:"cancelled",deleted_at:new Date().toISOString()}:entity==="onboarding"?{status:"cancelled",deleted_at:new Date().toISOString()}:entity==="documents"?{status:"archived",deleted_at:new Date().toISOString()}:{status:"archived",deleted_at:new Date().toISOString()};
-  const {error}=await ctx.db.from(tableByEntity[entity]).update(archive).eq("id",id);
+  const archivedAt=new Date().toISOString();
+  const archive=entity==="departments"
+    ?{status:"inactive"}
+    :entity==="vacancies"
+      ?{status:"cancelled",deleted_at:archivedAt}
+      :entity==="onboarding"
+        ?{status:"cancelled",deleted_at:archivedAt}
+        :entity==="documents"
+          ?{status:"archived",deleted_at:archivedAt}
+          :entity==="employees"
+            ?{employment_status:"inactive",deleted_at:archivedAt}
+            :{status:"archived",deleted_at:archivedAt};
+  const {data:target}=await ctx.db.from(tableByEntity[entity]).select("id").eq("id",id).eq("organization_id",ctx.organizationId).maybeSingle();
+  if(!target)return {ok:false,message:"The record was not found or access is restricted."};
+  const {error}=await ctx.db.from(tableByEntity[entity]).update(archive).eq("id",id).eq("organization_id",ctx.organizationId);
   if(error) return {ok:false,message:error.message};
   await ctx.db.from("audit_logs").insert({organization_id:ctx.organizationId,actor_id:ctx.user.id,action:"archive",entity_type:entity,entity_id:id,after_values:archive});
   revalidatePath(pathByEntity[entity]); revalidatePath("/hr/dashboard"); return {ok:true,message:"Record archived. Its history remains available in the audit log."};
 }
 
 export async function uploadEmployeeDocument(documentId:string,formData:FormData):Promise<MutationResult>{
-  const ctx=await context();if(!ctx)return {ok:false,message:"Connect Supabase and sign in to upload files."};
+  const ctx=await context("documents.manage");if(!ctx)return {ok:false,message:"Sign in with MFA using an HR role allowed to manage documents."};
   const file=formData.get("file");if(!(file instanceof File)||file.size===0)return {ok:false,message:"Choose a file to upload."};
   const allowed=new Set(["application/pdf","image/jpeg","image/png"]);if(!allowed.has(file.type))return {ok:false,message:"Only PDF, JPG, and PNG files are accepted."};
-  if(file.size>10*1024*1024)return {ok:false,message:"The file must be smaller than 10 MB."};
+  if(file.size>4*1024*1024)return {ok:false,message:"The file must be 4 MB or smaller."};
   const {data:document,error:readError}=await ctx.db.from("employee_documents").select("id,employee_id,storage_path").eq("id",documentId).single();
   if(readError||!document)return {ok:false,message:"You are not authorized to update this document."};
   const extension=file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g,"")||"bin";const path=`${document.employee_id}/${document.id}/${randomUUID()}.${extension}`;
@@ -123,7 +163,7 @@ export async function uploadEmployeeDocument(documentId:string,formData:FormData
 }
 
 export async function getDocumentDownloadUrl(documentId:string):Promise<MutationResult>{
-  const ctx=await context();if(!ctx)return {ok:false,message:"Connect Supabase and sign in to download files."};
+  const ctx=await context("documents.view");if(!ctx)return {ok:false,message:"Sign in with MFA using an HR role allowed to view documents."};
   const {data:document,error}=await ctx.db.from("employee_documents").select("storage_path,file_name").eq("id",documentId).single();if(error||!document?.storage_path)return {ok:false,message:"No file is attached or access is restricted."};
   const {data,error:signedError}=await ctx.db.storage.from("employee-documents").createSignedUrl(document.storage_path,60,{download:document.file_name||true});if(signedError)return {ok:false,message:signedError.message};
   await ctx.db.from("audit_logs").insert({organization_id:ctx.organizationId,actor_id:ctx.user.id,action:"document_download",entity_type:"documents",entity_id:documentId});return {ok:true,message:"Secure download prepared.",url:data.signedUrl};
