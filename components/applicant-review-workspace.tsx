@@ -12,7 +12,6 @@ import {
   Download,
   FileCheck2,
   FilePlus2,
-  GraduationCap,
   Mail,
   Pencil,
   Plus,
@@ -32,7 +31,6 @@ import {
   getApplicantDocumentDownloadUrl,
   reviewAiAssessment,
   saveInterviewEvaluation,
-  sendApplicantProfileRequest,
   updateApplicantDocument,
   updateApplicationStage,
   updateInterview,
@@ -356,7 +354,7 @@ export function ApplicantReviewWorkspace({
                 </p>
               </div>
             </div>
-            {application.coverLetter && application.profileCompletionStatus !== "completed" && (
+            {application.coverLetter && (
               <div className="mt-6 border-t border-slate-100 pt-6">
                 <h3 className="text-sm font-bold text-slate-900">Candidate statement</h3>
                 <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">
@@ -365,13 +363,6 @@ export function ApplicantReviewWorkspace({
               </div>
             )}
           </section>
-
-          <CompleteProfileSection
-            data={initialData}
-            application={application}
-            pending={pending}
-            run={run}
-          />
 
           <AiAssessmentSection
             applicationId={application.id}
@@ -555,113 +546,6 @@ export function ApplicantReviewWorkspace({
   );
 }
 
-function CompleteProfileSection({
-  data,
-  application,
-  pending,
-  run,
-}: {
-  data: ApplicantReviewData;
-  application: ApplicantReviewData["applications"][number];
-  pending: boolean;
-  run: (task: Promise<RecruitmentMutationResult>) => void;
-}) {
-  const completed = application.profileCompletionStatus === "completed";
-  const requested = application.profileCompletionStatus === "requested";
-
-  if (!completed)
-    return (
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_8px_30px_rgb(15,23,42,0.05)] sm:p-8">
-        <SectionHeading
-          icon={UserRoundCheck}
-          title="Complete applicant profile"
-          description={
-            requested
-              ? "The secure education form was sent after resume screening."
-              : "Education details are requested only after resume screening is passed."
-          }
-          action={
-            <div className="flex items-center gap-2">
-              <Badge value={application.profileCompletionStatus} />
-              {requested && (
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={() => run(sendApplicantProfileRequest(application.id))}
-                  className="h-9 rounded-xl bg-brand-50 px-3 text-xs font-bold text-brand-700 hover:bg-brand-100 disabled:opacity-50"
-                >
-                  Send new link
-                </button>
-              )}
-            </div>
-          }
-        />
-        <div
-          className={cn(
-            "mt-6 rounded-2xl border px-4 py-4 text-sm leading-6",
-            requested
-              ? "border-amber-200 bg-amber-50 text-amber-800"
-              : "border-slate-200 bg-slate-50 text-slate-600",
-          )}
-        >
-          {requested
-            ? "Waiting for the applicant to submit the single-use secure form. Their initial contact details and PDF resume remain available for review."
-            : "Move this application beyond Resume Screening to request the applicant’s education details."}
-        </div>
-      </section>
-    );
-
-  return (
-    <section className="rounded-3xl bg-white p-6 shadow-[0_8px_30px_rgb(15,23,42,0.05)] ring-1 ring-slate-200/70 sm:p-8">
-      <SectionHeading
-        icon={UserRoundCheck}
-        title="Complete applicant profile"
-        description="Education details submitted securely after resume screening."
-        action={<Badge value="completed" />}
-      />
-
-      <div className="mt-6 border-t border-slate-100 pt-6">
-        <ProfileHistory
-          icon={GraduationCap}
-          title="Education"
-          empty="No education record was submitted."
-          items={data.education.map((item) => ({
-            id: item.id,
-            title: item.degree || "Qualification",
-            subtitle: [item.school, item.fieldOfStudy].filter(Boolean).join(" · "),
-            dates: profileDateRange(item.startDate, item.endDate),
-            detail: item.description,
-          }))}
-        />
-      </div>
-    </section>
-  );
-}
-
-function ProfileHistory({ icon: Icon, title, empty, items }: { icon: typeof GraduationCap; title: string; empty: string; items: Array<{ id: string; title: string; subtitle: string; dates: string; detail: string | null }> }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 p-4">
-      <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><Icon className="h-4 w-4 text-brand-600" />{title}</h3>
-      <div className="mt-4 space-y-4">
-        {items.map((item) => (
-          <article key={item.id}>
-            <div className="text-sm font-bold text-slate-800">{item.title}</div>
-            <div className="mt-1 text-xs text-slate-500">{item.subtitle}</div>
-            {item.dates && <div className="mt-1 text-[11px] font-semibold text-slate-400">{item.dates}</div>}
-            {item.detail && <p className="mt-2 whitespace-pre-line text-xs leading-5 text-slate-500">{item.detail}</p>}
-          </article>
-        ))}
-        {!items.length && <p className="text-xs leading-5 text-slate-500">{empty}</p>}
-      </div>
-    </div>
-  );
-}
-
-function profileDateRange(start: string | null, end: string | null, current = false) {
-  if (!start && !end && !current) return "";
-  return `${start ? formatDate(start) : "Start not provided"} – ${current ? "Present" : end ? formatDate(end) : "End not provided"}`;
-}
-
 type HireSetup = Omit<
   Parameters<typeof hireAndStartEmployeePreboarding>[0],
   "applicationId" | "hiredStageId" | "decisionReason"
@@ -757,7 +641,7 @@ function AiAssessmentSection({
       <SectionHeading
         icon={BrainCircuit}
         title="AI-assisted candidate match"
-        description="Explainable job-fit support using the submitted resume, education, and vacancy criteria."
+        description="Explainable job-fit support using the submitted resume and vacancy criteria."
         action={
           <button
             type="button"

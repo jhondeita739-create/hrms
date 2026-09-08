@@ -1,11 +1,16 @@
 "use client";
+
 import { useActionState } from "react";
 import {
   BellRing,
+  CalendarDays,
   CheckCircle2,
   Clock3,
+  FileCheck2,
   LoaderCircle,
+  MapPin,
   Search,
+  Video,
 } from "lucide-react";
 import { useFormStatus } from "react-dom";
 import {
@@ -17,10 +22,7 @@ import { formatDate } from "@/lib/utils";
 const initialTrackingState: TrackingState = { status: "idle" };
 
 export function ApplicationTracker() {
-  const [state, action] = useActionState(
-    trackApplication,
-    initialTrackingState,
-  );
+  const [state, action] = useActionState(trackApplication, initialTrackingState);
   const qualifiedForInterview = Boolean(
     state.result?.notifications.some(
       (notification) =>
@@ -28,6 +30,13 @@ export function ApplicationTracker() {
         notification.eventType === "interview_scheduled",
     ) || state.result?.stage.toLowerCase().includes("interview"),
   );
+  const screeningPassed = Boolean(
+    qualifiedForInterview ||
+      state.result?.notifications.some(
+        (notification) => notification.eventType === "resume_screening_passed",
+      ),
+  );
+
   return (
     <div className="w-full">
       <form
@@ -71,19 +80,19 @@ export function ApplicationTracker() {
           </p>
         )}
       </form>
+
       {state.status === "success" && state.result && (
         <div className="mt-5 overflow-hidden rounded-xl border border-blue-200 bg-white shadow-panel">
           <div className="bg-brand-900 p-5 text-white">
             <div className="text-[10px] font-semibold uppercase tracking-[.12em] text-blue-200">
               {state.result.reference}
             </div>
-            <h2 className="mt-2 text-xl font-semibold">
-              {state.result.position}
-            </h2>
+            <h2 className="mt-2 text-xl font-semibold">{state.result.position}</h2>
             <p className="mt-1 text-xs text-blue-100/75">
               Applied {formatDate(state.result.appliedAt)}
             </p>
           </div>
+
           <div className="p-5">
             <div className="flex items-start gap-3">
               <span className="grid h-10 w-10 place-items-center rounded-full bg-brand-100 text-brand-700">
@@ -101,26 +110,87 @@ export function ApplicationTracker() {
                 </div>
               </div>
             </div>
-            <div className="mt-5 flex items-center gap-2 border-t border-slate-100 pt-4 text-xs text-slate-500">
+
+            <div className="mt-5 grid gap-3 border-t border-slate-100 pt-5 sm:grid-cols-2">
+              <StatusItem
+                icon={FileCheck2}
+                label="Resume"
+                value={
+                  state.result.resume?.verificationStatus === "verified"
+                    ? "Verified by HR"
+                    : state.result.resume
+                      ? "Received · Under review"
+                      : "Not available"
+                }
+                detail={state.result.resume?.fileName || "No resume file found"}
+                complete={state.result.resume?.verificationStatus === "verified"}
+              />
+              <StatusItem
+                icon={CheckCircle2}
+                label="Screening"
+                value={screeningPassed ? "Passed" : "In progress"}
+                detail={
+                  qualifiedForInterview
+                    ? "Qualified for interview"
+                    : screeningPassed
+                      ? "Resume screening completed"
+                      : "HR review is ongoing"
+                }
+                complete={screeningPassed}
+              />
+            </div>
+
+            {qualifiedForInterview && (
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                <div className="text-sm font-bold text-emerald-900">
+                  Qualified for interview
+                </div>
+                <p className="mt-1 text-xs leading-5 text-emerald-700">
+                  {state.result.interview
+                    ? "Your interview details are shown below."
+                    : "HR will post your schedule here and notify you when it is ready."}
+                </p>
+              </div>
+            )}
+
+            {state.result.interview && (
+              <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <div className="flex items-center gap-2 text-sm font-bold text-blue-950">
+                  <CalendarDays className="h-4 w-4 text-brand-600" />
+                  {state.result.interview.type}
+                </div>
+                <p className="mt-2 text-xs font-semibold text-blue-900">
+                  {formatInterviewDate(
+                    state.result.interview.scheduledStart,
+                    state.result.interview.timezone,
+                  )}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-3 text-xs text-blue-800">
+                  {state.result.interview.location && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5" />
+                      {state.result.interview.location}
+                    </span>
+                  )}
+                  {state.result.interview.meetingUrl && (
+                    <a
+                      href={state.result.interview.meetingUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1.5 font-bold underline underline-offset-2"
+                    >
+                      <Video className="h-3.5 w-3.5" /> Join meeting
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4 flex items-center gap-2 text-xs text-slate-500">
               <CheckCircle2 className="h-4 w-4 text-brand-600" />
               We’ll contact you when there is an update.
             </div>
-            {qualifiedForInterview && (
-              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                <div className="text-sm font-bold text-emerald-900">Qualified for interview</div>
-                <p className="mt-1 text-xs leading-5 text-emerald-700">Check the updates below for scheduling instructions and your secure profile-completion link.</p>
-              </div>
-            )}
-            {state.result.profileCompletionStatus === "requested" && (
-              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800">
-                Your education details are now required. Open the secure single-use link in your screening update or email.
-              </div>
-            )}
-            {state.result.profileCompletionStatus === "completed" && (
-              <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4 text-xs font-semibold text-blue-800">
-                Your education details have been received.
-              </div>
-            )}
+
             {state.result.notifications.length > 0 && (
               <div className="mt-5 border-t border-slate-100 pt-5">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[.1em] text-slate-500">
@@ -154,6 +224,45 @@ export function ApplicationTracker() {
   );
 }
 
+function StatusItem({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  complete,
+}: {
+  icon: typeof FileCheck2;
+  label: string;
+  value: string;
+  detail: string;
+  complete: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.1em] text-slate-400">
+        <Icon
+          className={
+            complete ? "h-4 w-4 text-emerald-600" : "h-4 w-4 text-brand-600"
+          }
+        />
+        {label}
+      </div>
+      <div className="mt-2 text-sm font-bold text-slate-900">{value}</div>
+      <p className="mt-1 truncate text-xs text-slate-500" title={detail}>
+        {detail}
+      </p>
+    </div>
+  );
+}
+
+function formatInterviewDate(value: string, timeZone: string) {
+  return new Intl.DateTimeFormat("en-PH", {
+    dateStyle: "full",
+    timeStyle: "short",
+    timeZone,
+  }).format(new Date(value));
+}
+
 function LinkedMessage({ text }: { text: string }) {
   return (
     <>
@@ -165,7 +274,7 @@ function LinkedMessage({ text }: { text: string }) {
             className="font-bold text-brand-700 underline underline-offset-2"
             rel="noreferrer"
           >
-            Complete profile
+            Open link
           </a>
         ) : (
           <span key={`${part}-${index}`}>{part}</span>

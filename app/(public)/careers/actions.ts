@@ -1,6 +1,6 @@
 "use server";
 
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import "pdf-parse/worker";
 import { PDFParse } from "pdf-parse";
@@ -306,65 +306,6 @@ export async function submitPublicApplication(
   };
 }
 
-export type ProfileCompletionState = {
-  status: "idle" | "error" | "success";
-  message?: string;
-  fieldErrors?: Record<string, string>;
-};
-
-const profileCompletionSchema = z
-  .object({
-    token: z.string().regex(/^[a-f0-9]{64}$/i, "The secure profile link is invalid"),
-    school: z.string().trim().min(2, "School or university is required").max(200),
-    degree: z.string().trim().min(2, "Degree or qualification is required").max(160),
-    field_of_study: z.string().trim().min(2, "Field of study is required").max(160),
-    education_start: z.union([z.string().date(), z.literal("")]),
-    education_end: z.union([z.string().date(), z.literal("")]),
-    education_notes: z.string().trim().max(1000),
-  });
-
-export async function completeScreenedApplicantProfile(
-  _: ProfileCompletionState,
-  formData: FormData,
-): Promise<ProfileCompletionState> {
-  const parsed = profileCompletionSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success)
-    return {
-      status: "error",
-      message: "Please complete the highlighted profile information.",
-      fieldErrors: errors(parsed.error),
-    };
-  if (!isAdminConfigured())
-    return { status: "error", message: "Applicant profile completion is not configured." };
-
-  const { token, ...profileData } = parsed.data;
-  const db = createAdminClient();
-  const tokenHash = createHash("sha256").update(token).digest("hex");
-  const { data: applicationId, error } = await db.rpc(
-    "complete_screened_applicant_profile",
-    {
-      p_completion_token_hash: tokenHash,
-      p_profile_data: profileData,
-    },
-  );
-  if (error)
-    return {
-      status: "error",
-      message: error.message.includes("invalid or has expired")
-        ? "This secure profile link is invalid, expired, or has already been used. Contact HR for a new link."
-        : error.message,
-    };
-
-  revalidatePath("/hr/recruitment/applicants");
-  revalidatePath("/hr/dashboard");
-  return {
-    status: "success",
-    message: applicationId
-      ? "Your education details were submitted securely. HR can now continue the interview process."
-      : "Your education details were submitted.",
-  };
-}
-
 export type TrackingState = {
   status: "idle" | "error" | "success";
   message?: string;
@@ -373,8 +314,20 @@ export type TrackingState = {
     position: string;
     stage: string;
     applicationStatus: string;
-    profileCompletionStatus: string;
     appliedAt: string;
+    resume: {
+      fileName: string;
+      verificationStatus: string;
+    } | null;
+    interview: {
+      type: string;
+      scheduledStart: string;
+      scheduledEnd: string;
+      timezone: string;
+      location: string | null;
+      meetingUrl: string | null;
+      status: string;
+    } | null;
     notifications: Array<{
       id: string;
       subject: string;
@@ -407,8 +360,12 @@ export async function trackApplication(
         position: "Product Designer",
         stage: "Recruiter review",
         applicationStatus: "In progress",
-        profileCompletionStatus: "not_requested",
         appliedAt: "2026-08-25",
+        resume: {
+          fileName: "candidate-resume.pdf",
+          verificationStatus: "verified",
+        },
+        interview: null,
         notifications: [],
       },
     };
@@ -416,7 +373,7 @@ export async function trackApplication(
   const { data, error } = await db
     .from("job_applications")
     .select(
-      "id,application_number,application_status,profile_completion_status,applied_at,applicants!inner(email),job_vacancies(title),recruitment_stages(name)",
+      "id,application_number,application_status,applied_at,applicants!inner(email),job_vacancies(title),recruitment_stages(name)",
     )
     .eq("application_number", referenceValue)
     .ilike("applicants.email", email)
@@ -428,13 +385,33 @@ export async function trackApplication(
     };
   const vacancy = data.job_vacancies as unknown as { title?: string } | null;
   const stage = data.recruitment_stages as unknown as { name?: string } | null;
-  const { data: notifications } = await db
-    .from("applicant_notifications")
-    .select("id,subject,body,event_type,queued_at")
-    .eq("job_application_id", data.id)
-    .eq("channel", "portal")
-    .in("delivery_status", ["sent", "read"])
-    .order("queued_at", { ascending: false });
+  const [{ data: notifications }, { data: resume }, { data: interview }] =
+    await Promise.all([
+      db
+        .from("applicant_notifications")
+        .select("id,subject,body,event_type,queued_at")
+        .eq("job_application_id", data.id)
+        .eq("channel", "portal")
+        .in("delivery_status", ["sent", "read"])
+        .order("queued_at", { ascending: false }),
+      db
+        .from("applicant_documents")
+        .select("file_name,verification_status")
+        .eq("job_application_id", data.id)
+        .eq("document_type", "resume")
+        .is("deleted_at", null)
+        .order("uploaded_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      db
+        .from("interviews")
+        .select("interview_type,scheduled_start,scheduled_end,timezone,location,meeting_url,status")
+        .eq("job_application_id", data.id)
+        .neq("status", "cancelled")
+        .order("scheduled_start", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
   if (notifications?.length)
     await db
       .from("applicant_notifications")
@@ -447,8 +424,24 @@ export async function trackApplication(
       position: vacancy?.title || "Position",
       stage: stage?.name || "Application received",
       applicationStatus: data.application_status,
-      profileCompletionStatus: data.profile_completion_status,
       appliedAt: data.applied_at,
+      resume: resume
+        ? {
+            fileName: resume.file_name,
+            verificationStatus: resume.verification_status,
+          }
+        : null,
+      interview: interview
+        ? {
+            type: interview.interview_type,
+            scheduledStart: interview.scheduled_start,
+            scheduledEnd: interview.scheduled_end,
+            timezone: interview.timezone,
+            location: interview.location,
+            meetingUrl: interview.meeting_url,
+            status: interview.status,
+          }
+        : null,
       notifications: (notifications || []).map((notification) => ({
         id: notification.id,
         subject: notification.subject,

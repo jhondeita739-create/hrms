@@ -1,6 +1,6 @@
 "use server";
 
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import "pdf-parse/worker";
 import { PDFParse } from "pdf-parse";
@@ -66,7 +66,7 @@ export async function updateApplicationStage(
   const { data: application } = await ctx.db
     .from("job_applications")
     .select(
-      "id,applicant_id,current_stage_id,application_status,profile_completion_status,hired_at,applicants(first_name,email),job_vacancies(title)",
+      "id,applicant_id,current_stage_id,application_status,hired_at,applicants(first_name,email),job_vacancies(title)",
     )
     .eq("id", parsed.data.applicationId)
     .eq("organization_id", ctx.organizationId)
@@ -101,8 +101,6 @@ export async function updateApplicationStage(
   const passedResumeScreening =
     stage.stage_type === "active" &&
     stage.stage_order > Number(screeningStage?.stage_order ?? 20);
-  const requestProfile =
-    passedResumeScreening && application.profile_completion_status === "not_requested";
   if (isHired)
     return {
       ok: false,
@@ -129,22 +127,14 @@ export async function updateApplicationStage(
         message: "Verify the applicant's resume before moving beyond Resume Screening.",
       };
   }
-  const profileToken = requestProfile
-    ? `${randomUUID().replaceAll("-", "")}${randomUUID().replaceAll("-", "")}`
-    : null;
-  const profileTokenExpiresAt = requestProfile
-    ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString()
-    : null;
   const { error: transitionError } = await ctx.db.rpc(
     "transition_job_application",
     {
       application_uuid: application.id,
       target_stage_uuid: stage.id,
       reason_text: parsed.data.reason || null,
-      profile_token_hash_value: profileToken
-        ? createHash("sha256").update(profileToken).digest("hex")
-        : null,
-      profile_token_expires_value: profileTokenExpiresAt,
+      profile_token_hash_value: null,
+      profile_token_expires_value: null,
     },
   );
   if (transitionError) {
@@ -164,12 +154,8 @@ export async function updateApplicationStage(
     email?: string;
   } | null;
   const vacancy = application.job_vacancies as unknown as { title?: string } | null;
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
-  const profileUrl = profileToken
-    ? `${siteUrl}/careers/track?token=${encodeURIComponent(profileToken)}`
-    : null;
   let notificationWarning = "";
-  if (applicant?.email && (requestProfile || interviewStage || isRejected)) {
+  if (applicant?.email && (passedResumeScreening || interviewStage || isRejected)) {
     const subject = interviewStage
       ? `Interview update for ${vacancy?.title || "your application"}`
       : isHired
@@ -178,12 +164,12 @@ export async function updateApplicationStage(
           ? `Application update: ${vacancy?.title || "your application"}`
           : `Resume screening update for ${vacancy?.title || "your application"}`;
     const body = interviewStage
-      ? `Hi ${applicant.first_name || "there"}, you are qualified for an interview and your application has progressed to ${stage.name}. ${profileUrl ? `Complete your education details using this secure link: ${profileUrl}.` : "Use the secure profile link from your earlier screening update if your education details are still incomplete."} The recruitment team will share scheduling details with you.`
+      ? `Hi ${applicant.first_name || "there"}, you are qualified for an interview and your application has progressed to ${stage.name}. The recruitment team will share scheduling details with you. Use Track application to view updates.`
       : isHired
         ? `Hi ${applicant.first_name || "there"}, congratulations. You have been selected for ${vacancy?.title || "the position"}. The HR team will contact you with the next steps.`
         : isRejected
           ? `Hi ${applicant.first_name || "there"}, thank you for your interest in ${vacancy?.title || "the position"}. After review, your application was not selected for this role. Your information remains available to the HR team for appropriate future opportunities.`
-          : `Hi ${applicant.first_name || "there"}, your resume passed the initial screening for ${vacancy?.title || "the position"}. Please complete your education details within 14 days using this secure link: ${profileUrl}. This screening result is not yet an interview invitation; HR will notify you separately if you qualify for an interview.`;
+          : `Hi ${applicant.first_name || "there"}, your resume passed the initial screening for ${vacancy?.title || "the position"}. No duplicate education or experience form is required. HR will notify you separately if you qualify for an interview.`;
     try {
       await createApplicantNotification(ctx, {
         applicantId: application.applicant_id,
@@ -234,7 +220,7 @@ export async function createInterview(
   if (!ctx) return { ok: false, message: accessMessage };
   const { data: application } = await ctx.db
     .from("job_applications")
-    .select("id,applicant_id,application_status,profile_completion_status,recruitment_stages(name),applicants(first_name,email),job_vacancies(title)")
+    .select("id,applicant_id,application_status,recruitment_stages(name),applicants(first_name,email),job_vacancies(title)")
     .eq("id", parsed.data.applicationId)
     .eq("organization_id", ctx.organizationId)
     .maybeSingle();
@@ -273,36 +259,11 @@ export async function createInterview(
   });
   if (error) return { ok: false, message: error.message };
 
-  const profileToken =
-    application.profile_completion_status === "not_requested"
-      ? `${randomUUID().replaceAll("-", "")}${randomUUID().replaceAll("-", "")}`
-      : null;
-  if (profileToken) {
-    const { error: requestError } = await ctx.db
-      .from("job_applications")
-      .update({
-        profile_completion_status: "requested",
-        profile_completion_token_hash: createHash("sha256").update(profileToken).digest("hex"),
-        profile_completion_token_expires_at: new Date(
-          Date.now() + 14 * 24 * 60 * 60 * 1000,
-        ).toISOString(),
-      })
-      .eq("id", applicationId)
-      .eq("organization_id", ctx.organizationId);
-    if (requestError) return { ok: false, message: requestError.message };
-  }
-
   const applicant = application.applicants as unknown as {
     first_name?: string;
     email?: string;
   } | null;
   const vacancy = application.job_vacancies as unknown as { title?: string } | null;
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
-  const profileInstruction = profileToken
-    ? ` Complete your education details using this secure link: ${siteUrl}/careers/track?token=${encodeURIComponent(profileToken)}.`
-    : application.profile_completion_status === "requested"
-      ? " Use the secure profile-completion link from your qualification update if your details are still incomplete."
-      : "";
   let notificationWarning = "";
   if (applicant?.email) {
     try {
@@ -312,7 +273,7 @@ export async function createInterview(
         recipient: applicant.email,
         eventType: "interview_scheduled",
         subject: `Interview scheduled for ${vacancy?.title || "your application"}`,
-        body: `Hi ${applicant.first_name || "there"}, you are qualified for an interview. Your ${type} is scheduled for ${new Date(scheduledStart).toLocaleString("en-PH", { timeZone: rest.timezone })}. ${rest.location ? `Location: ${rest.location}.` : ""} ${meetingUrl ? `Meeting link: ${meetingUrl}.` : ""}${profileInstruction}`.trim(),
+        body: `Hi ${applicant.first_name || "there"}, you are qualified for an interview. Your ${type} is scheduled for ${new Date(scheduledStart).toLocaleString("en-PH", { timeZone: rest.timezone })}. ${rest.location ? `Location: ${rest.location}.` : ""} ${meetingUrl ? `Meeting link: ${meetingUrl}.` : ""}`.trim(),
       });
     } catch {
       notificationWarning = " The interview was saved, but the notification could not be queued.";
@@ -320,75 +281,6 @@ export async function createInterview(
   }
   refreshApplicant(application.applicant_id);
   return { ok: true, message: `Interview scheduled.${notificationWarning || " Applicant notified."}` };
-}
-
-export async function sendApplicantProfileRequest(
-  applicationId: string,
-): Promise<RecruitmentMutationResult> {
-  if (!isSupabaseConfigured())
-    return { ok: true, message: "Secure profile request sent in preview mode." };
-  if (!z.string().uuid().safeParse(applicationId).success)
-    return { ok: false, message: "Application could not be found." };
-  const ctx = await context();
-  if (!ctx) return { ok: false, message: accessMessage };
-
-  const { data: application } = await ctx.db
-    .from("job_applications")
-    .select("id,applicant_id,profile_completion_status,application_status,applicants(first_name,email),job_vacancies(title)")
-    .eq("id", applicationId)
-    .eq("organization_id", ctx.organizationId)
-    .maybeSingle();
-  if (!application) return { ok: false, message: "Application could not be found." };
-  if (application.profile_completion_status === "completed")
-    return { ok: false, message: "The applicant has already completed this profile." };
-  if (application.profile_completion_status !== "requested")
-    return {
-      ok: false,
-      message: "Move the application beyond Resume Screening before sending a profile link.",
-    };
-  if (application.application_status !== "in_progress")
-    return { ok: false, message: "Profile requests are available only for active applications." };
-
-  const applicant = application.applicants as unknown as {
-    first_name?: string;
-    email?: string;
-  } | null;
-  if (!applicant?.email)
-    return { ok: false, message: "The applicant does not have a delivery email." };
-
-  const profileToken = `${randomUUID().replaceAll("-", "")}${randomUUID().replaceAll("-", "")}`;
-  const { error: updateError } = await ctx.db
-    .from("job_applications")
-    .update({
-      profile_completion_status: "requested",
-      profile_completion_token_hash: createHash("sha256").update(profileToken).digest("hex"),
-      profile_completion_token_expires_at: new Date(
-        Date.now() + 14 * 24 * 60 * 60 * 1000,
-      ).toISOString(),
-    })
-    .eq("id", application.id)
-    .eq("organization_id", ctx.organizationId);
-  if (updateError) return { ok: false, message: updateError.message };
-
-  const vacancy = application.job_vacancies as unknown as { title?: string } | null;
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
-  try {
-    await createApplicantNotification(ctx, {
-      applicantId: application.applicant_id,
-      applicationId: application.id,
-      recipient: applicant.email,
-      eventType: "profile_completion_requested",
-      subject: `Complete your education details for ${vacancy?.title || "your application"}`,
-      body: `Hi ${applicant.first_name || "there"}, please complete your education details within 14 days using this secure single-use link: ${siteUrl}/careers/track?token=${encodeURIComponent(profileToken)}.`,
-    });
-  } catch {
-    return {
-      ok: false,
-      message: "The secure link was created, but its notification could not be queued. Try Send new link again.",
-    };
-  }
-  refreshApplicant(application.applicant_id);
-  return { ok: true, message: "A new secure profile link was sent to the applicant." };
 }
 
 export async function updateInterview(
@@ -528,18 +420,13 @@ export async function generateAiAssessment(
     return { ok: false, message: "Application could not be assessed." };
   const { data: application } = await ctx.db
     .from("job_applications")
-    .select("id,applicant_id,job_vacancy_id,application_status,profile_completion_status")
+    .select("id,applicant_id,job_vacancy_id,application_status")
     .eq("id", applicationId)
     .eq("organization_id", ctx.organizationId)
     .maybeSingle();
   if (!application) return { ok: false, message: "Application could not be found." };
   if (application.application_status !== "in_progress")
     return { ok: false, message: "Only active applications can be assessed." };
-  if (application.profile_completion_status !== "completed")
-    return {
-      ok: false,
-      message: "Wait until the applicant completes their screened profile before generating a match assessment.",
-    };
   const { data: verifiedResume, error: resumeReadError } = await ctx.db
     .from("applicant_documents")
     .select("id,extracted_text,storage_path,mime_type")
@@ -587,29 +474,16 @@ export async function generateAiAssessment(
       await parser.destroy();
     }
   }
-  const [vacancyResult, educationResult] = await Promise.all([
-    ctx.db
-      .from("job_vacancies")
-      .select("title,qualifications,required_skills,preferred_skills")
-      .eq("id", application.job_vacancy_id)
-      .single(),
-    ctx.db
-      .from("applicant_education")
-      .select("school,degree,field_of_study")
-      .eq("applicant_id", application.applicant_id),
-  ]);
+  const vacancyResult = await ctx.db
+    .from("job_vacancies")
+    .select("title,qualifications,required_skills,preferred_skills")
+    .eq("id", application.job_vacancy_id)
+    .single();
   if (vacancyResult.error)
     return { ok: false, message: "Candidate or vacancy details are incomplete." };
 
   const vacancy = vacancyResult.data;
-  const education = educationResult.data || [];
-  const candidateText = [
-    resumeText,
-    ...education.flatMap((item) => [item.school, item.degree, item.field_of_study]),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
+  const candidateText = resumeText.toLowerCase();
   const candidateWords = words(candidateText);
   const required = (vacancy.required_skills || []) as string[];
   const preferred = (vacancy.preferred_skills || []) as string[];
@@ -653,7 +527,7 @@ export async function generateAiAssessment(
       ? ["Resume text was not captured for this older application"]
       : []),
   ];
-  const summary = `Job-related fit score ${score}/100 based on the submitted resume, education details, and vacancy criteria. This is decision support only; every candidate requires human review.`;
+  const summary = `Job-related fit score ${score}/100 based on the submitted resume and vacancy criteria. This is decision support only; every candidate requires human review.`;
   const { error } = await ctx.db.from("applicant_ai_assessments").upsert(
     {
       organization_id: ctx.organizationId,

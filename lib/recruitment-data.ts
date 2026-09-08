@@ -66,7 +66,6 @@ export type ApplicantReviewApplication = {
   stageId: string | null;
   stage: string;
   applicationStatus: string;
-  profileCompletionStatus: string;
   appliedAt: string;
   rating: number;
   coverLetter: string | null;
@@ -95,26 +94,6 @@ export type ApplicantReviewData = {
     availabilityDate: string | null;
     status: string;
   };
-  education: Array<{
-    id: string;
-    school: string;
-    degree: string | null;
-    fieldOfStudy: string | null;
-    startDate: string | null;
-    endDate: string | null;
-    description: string | null;
-  }>;
-  experience: Array<{
-    id: string;
-    company: string;
-    position: string;
-    employmentType: string | null;
-    startDate: string | null;
-    endDate: string | null;
-    currentlyEmployed: boolean;
-    responsibilities: string | null;
-    achievements: string | null;
-  }>;
   applications: ApplicantReviewApplication[];
   documents: ApplicantDocumentRecord[];
   stages: Array<{ id: string; name: string; type: string }>;
@@ -152,8 +131,6 @@ export async function getApplicantReviewData(
         availabilityDate: null,
         status: String(preview.status),
       },
-      education: [],
-      experience: [],
       applications: [
         {
           id: preview.id,
@@ -162,7 +139,6 @@ export async function getApplicantReviewData(
           stageId: "preview-interview",
           stage: String(preview.stage),
           applicationStatus: "in_progress",
-          profileCompletionStatus: "not_requested",
           appliedAt: String(preview.created_at),
           rating: Number(preview.rating || 0),
           coverLetter: "I am interested in contributing my experience to this role.",
@@ -211,7 +187,7 @@ export async function getApplicantReviewData(
   const { data: applications, error: applicationsError } = await db
     .from("job_applications")
     .select(
-      "id,application_number,current_stage_id,application_status,profile_completion_status,applied_at,rating,cover_letter,final_result,rejection_reason,job_vacancies(title),recruitment_stages(name)",
+      "id,application_number,current_stage_id,application_status,applied_at,rating,cover_letter,final_result,rejection_reason,job_vacancies(title),recruitment_stages(name)",
     )
     .eq("applicant_id", applicantId)
     .order("applied_at", { ascending: false });
@@ -224,8 +200,6 @@ export async function getApplicantReviewData(
     interviewsResult,
     assessmentsResult,
     notificationsResult,
-    educationResult,
-    experienceResult,
   ] =
     await Promise.all([
       db
@@ -260,16 +234,6 @@ export async function getApplicantReviewData(
             .in("job_application_id", applicationIds)
             .order("queued_at", { ascending: false })
         : Promise.resolve({ data: [], error: null }),
-      db
-        .from("applicant_education")
-        .select("id,school,degree,field_of_study,start_date,end_date,description")
-        .eq("applicant_id", applicantId)
-        .order("created_at"),
-      db
-        .from("applicant_experience")
-        .select("id,company,position,employment_type,start_date,end_date,currently_employed,responsibilities,achievements")
-        .eq("applicant_id", applicantId)
-        .order("start_date", { ascending: false }),
     ]);
 
   for (const result of [
@@ -278,8 +242,6 @@ export async function getApplicantReviewData(
     interviewsResult,
     assessmentsResult,
     notificationsResult,
-    educationResult,
-    experienceResult,
   ]) {
     if (result.error) throw new Error(result.error.message);
   }
@@ -306,26 +268,6 @@ export async function getApplicantReviewData(
       availabilityDate: applicant.availability_date,
       status: applicant.status,
     },
-    education: ((educationResult.data || []) as Raw[]).map((item) => ({
-      id: String(item.id),
-      school: String(item.school),
-      degree: item.degree ? String(item.degree) : null,
-      fieldOfStudy: item.field_of_study ? String(item.field_of_study) : null,
-      startDate: item.start_date ? String(item.start_date) : null,
-      endDate: item.end_date ? String(item.end_date) : null,
-      description: item.description ? String(item.description) : null,
-    })),
-    experience: ((experienceResult.data || []) as Raw[]).map((item) => ({
-      id: String(item.id),
-      company: String(item.company),
-      position: String(item.position),
-      employmentType: item.employment_type ? String(item.employment_type) : null,
-      startDate: item.start_date ? String(item.start_date) : null,
-      endDate: item.end_date ? String(item.end_date) : null,
-      currentlyEmployed: Boolean(item.currently_employed),
-      responsibilities: item.responsibilities ? String(item.responsibilities) : null,
-      achievements: item.achievements ? String(item.achievements) : null,
-    })),
     applications: ((applications || []) as unknown as Raw[]).map((application) => {
       const vacancy = application.job_vacancies as Raw | null;
       const stage = application.recruitment_stages as Raw | null;
@@ -341,7 +283,6 @@ export async function getApplicantReviewData(
           : null,
         stage: String(stage?.name || "Application received"),
         applicationStatus: String(application.application_status),
-        profileCompletionStatus: String(application.profile_completion_status || "not_requested"),
         appliedAt: String(application.applied_at),
         rating: Number(application.rating || 0),
         coverLetter: application.cover_letter

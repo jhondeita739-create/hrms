@@ -232,7 +232,7 @@ export async function hireAndStartEmployeePreboarding(
     ctx.admin
       .from("job_applications")
       .select(
-        "id,applicant_id,application_status,profile_completion_status,applicants(first_name,middle_name,last_name,email),job_vacancies(title),interviews(status,interview_evaluations(id))",
+        "id,applicant_id,application_status,applicants(first_name,middle_name,last_name,email),job_vacancies(title),interviews(status,interview_evaluations(id))",
       )
       .eq("id", parsed.data.applicationId)
       .eq("organization_id", ctx.organizationId)
@@ -253,12 +253,6 @@ export async function hireAndStartEmployeePreboarding(
       ok: false,
       message: "This applicant is already hired. Use Employee preboarding to create or recover their account.",
     };
-  if (application.profile_completion_status !== "completed")
-    return {
-      ok: false,
-      message: "The applicant must complete their screened profile before they can be hired.",
-    };
-
   const { data: verifiedResume } = await ctx.admin
     .from("applicant_documents")
     .select("id")
