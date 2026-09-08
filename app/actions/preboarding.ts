@@ -128,7 +128,7 @@ async function provisionEmployeeAuthUser(
       organization_id: organizationId,
       account_type: "temporary_employee",
     },
-    redirectTo: `${siteUrl}/auth/callback?next=/account/set-password`,
+    redirectTo: `${siteUrl}/auth/callback`,
   });
   if (error || !data.user)
     return {
@@ -184,7 +184,7 @@ export async function resendEmployeeActivation(
       detectSessionInUrl: false,
     },
   });
-  const redirectTo = `${getApplicationSiteUrl()}/auth/callback?next=/account/set-password`;
+  const redirectTo = `${getApplicationSiteUrl()}/auth/callback`;
   const { error: sendError } = await mailClient.auth.signInWithOtp({
     email,
     options: {
