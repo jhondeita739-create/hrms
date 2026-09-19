@@ -45,24 +45,24 @@ export default async function CareersPage({
       <div className="pointer-events-none absolute left-[10%] top-[-10%] h-[500px] w-[500px] rounded-full bg-blue-300/20 mix-blend-multiply blur-[100px]" />
       <div className="pointer-events-none absolute right-[10%] top-[20%] h-[500px] w-[500px] rounded-full bg-indigo-300/20 mix-blend-multiply blur-[100px]" />
 
-      <section className="relative z-10 mx-auto max-w-[1400px] px-6 pt-16 lg:px-12 xl:pt-24">
+      <section className="relative z-10 mx-auto max-w-[1400px] px-4 pt-12 sm:px-6 sm:pt-16 lg:px-12 xl:pt-24">
         <div className="mx-auto max-w-2xl text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-brand-700 shadow-sm">
             HRMS Careers
           </div>
-          <h1 className="mt-6 text-5xl font-extrabold tracking-tight text-slate-900 md:text-6xl">
+          <h1 className="mt-5 text-4xl font-extrabold tracking-tight text-slate-900 sm:mt-6 sm:text-5xl md:text-6xl">
             Find your next role.
           </h1>
-          <p className="mt-6 text-lg leading-relaxed text-slate-500">
+          <p className="mt-4 text-base leading-relaxed text-slate-500 sm:mt-6 sm:text-lg">
             Join a team where your experience, curiosity, and perspective can
             make a meaningful difference.
           </p>
         </div>
       </section>
 
-      <section className="relative z-10 mx-auto mt-16 grid w-full max-w-[1400px] gap-10 px-6 pb-24 lg:grid-cols-[280px_minmax(0,1fr)] lg:px-12 xl:gap-16">
+      <section className="relative z-10 mx-auto mt-10 grid w-full max-w-[1400px] gap-8 px-4 pb-16 sm:mt-14 sm:px-6 sm:pb-24 lg:grid-cols-[280px_minmax(0,1fr)] lg:px-12 xl:gap-16">
         <aside>
-          <div className="sticky top-32 rounded-3xl border border-white/40 bg-white/60 p-6 shadow-xl shadow-indigo-900/5 backdrop-blur-3xl">
+          <div className="rounded-3xl border border-white/40 bg-white/60 p-5 shadow-xl shadow-indigo-900/5 backdrop-blur-3xl sm:p-6 lg:sticky lg:top-28">
             <form className="space-y-6">
               <div>
                 <label
@@ -78,7 +78,7 @@ export default async function CareersPage({
                     name="q"
                     defaultValue={params.q}
                     placeholder="Title, skill, location…"
-                    className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 text-sm font-medium text-slate-900 outline-none transition-all focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10"
+                    className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 text-base font-medium text-slate-900 outline-none transition-all focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm"
                   />
                 </div>
               </div>
@@ -93,7 +93,7 @@ export default async function CareersPage({
                   id="department"
                   name="department"
                   defaultValue={params.department || ""}
-                  className="h-12 w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-900 outline-none transition-all focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10"
+                  className="h-12 w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 text-base font-medium text-slate-900 outline-none transition-all focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 sm:text-sm"
                 >
                   <option value="">All departments</option>
                   {departments.map((department) => (
@@ -116,7 +116,7 @@ export default async function CareersPage({
           </div>
         </aside>
         
-        <div>
+        <div className="min-w-0">
           <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
             <div className="text-xl font-extrabold text-slate-900">
               {filtered.length}{" "}
@@ -137,17 +137,17 @@ export default async function CareersPage({
                 <Link
                   href={`/careers/${job.id}`}
                   key={job.id}
-                  className="group flex flex-col justify-between gap-6 rounded-3xl border border-white/60 bg-white/70 p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-brand-200 hover:bg-white hover:shadow-[0_12px_40px_rgb(37,99,235,0.08)]"
+                  className="group flex min-w-0 flex-col justify-between gap-5 rounded-3xl border border-white/60 bg-white/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-brand-200 hover:bg-white hover:shadow-[0_12px_40px_rgb(37,99,235,0.08)] sm:gap-6 sm:p-6"
                 >
-                  <div className="flex items-start gap-5">
-                    <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-600 transition-transform duration-300 group-hover:scale-110">
+                  <div className="flex min-w-0 items-start gap-4 sm:gap-5">
+                    <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-600 transition-transform duration-300 group-hover:scale-110 sm:h-14 sm:w-14">
                       <BriefcaseBusiness className="h-6 w-6" />
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="text-xs font-bold uppercase tracking-wider text-brand-600">
                         {job.department}
                       </div>
-                      <h2 className="mt-2 text-xl font-bold tracking-tight text-slate-900 group-hover:text-brand-700">
+                      <h2 className="mt-2 break-words text-lg font-bold tracking-tight text-slate-900 group-hover:text-brand-700 sm:text-xl">
                         {job.title}
                       </h2>
                       <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-slate-500">
@@ -162,7 +162,7 @@ export default async function CareersPage({
                       workArrangement={job.workArrangement}
                       location={job.location}
                     />
-                    <span className="flex items-center gap-1.5 rounded-full bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow-md transition-all group-hover:bg-brand-600 group-hover:shadow-lg">
+                    <span className="flex w-full items-center justify-center gap-1.5 rounded-full bg-slate-900 px-4 py-2.5 text-xs font-bold text-white shadow-md transition-all group-hover:bg-brand-600 group-hover:shadow-lg sm:w-auto">
                       View role <ArrowRight className="h-3.5 w-3.5" />
                     </span>
                   </div>

@@ -19,21 +19,21 @@ export default function MarketingHomePage() {
       <div className="pointer-events-none absolute right-[-10%] top-[10%] h-[600px] w-[600px] rounded-full bg-violet-400/20 mix-blend-multiply blur-[120px]" />
 
       {/* Hero Section */}
-      <section className="relative z-10 mx-auto max-w-7xl px-6 pt-20 text-center md:pt-32 lg:px-8">
+      <section className="relative z-10 mx-auto max-w-7xl px-4 pt-14 text-center sm:px-6 sm:pt-20 md:pt-28 lg:px-8 lg:pt-32">
         <div className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-4 py-2 text-xs font-bold text-brand-700 shadow-sm">
           <Sparkles className="h-4 w-4" />
           The Modern HR Platform
         </div>
-        <h1 className="mx-auto mt-8 max-w-4xl text-5xl font-extrabold tracking-tight text-slate-900 sm:text-6xl md:text-7xl">
+        <h1 className="mx-auto mt-7 max-w-4xl text-4xl font-extrabold tracking-tight text-slate-900 min-[390px]:text-5xl sm:mt-8 sm:text-6xl md:text-7xl">
           Build a team that <span className="text-brand-600">thrives</span>.
         </h1>
-        <p className="mx-auto mt-8 max-w-2xl text-lg leading-relaxed text-slate-500 sm:text-xl">
+        <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-slate-500 sm:mt-8 sm:text-xl">
           Everything you need to attract top talent, manage applicant pipelines, and deliver an unforgettable onboarding experience.
         </p>
-        <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+        <div className="mx-auto mt-8 flex w-full max-w-sm flex-col items-stretch justify-center gap-3 sm:mt-10 sm:max-w-none sm:flex-row sm:items-center sm:gap-4">
           <Link
             href="/login"
-            className="group flex h-14 items-center gap-2 rounded-full bg-brand-600 px-8 text-base font-bold text-white shadow-[0_8px_30px_rgb(37,99,235,0.3)] transition-all hover:-translate-y-1 hover:bg-brand-500 hover:shadow-[0_12px_40px_rgb(37,99,235,0.4)] active:translate-y-0"
+            className="group flex h-14 items-center justify-center gap-2 rounded-full bg-brand-600 px-8 text-base font-bold text-white shadow-[0_8px_30px_rgb(37,99,235,0.3)] transition-all hover:-translate-y-1 hover:bg-brand-500 hover:shadow-[0_12px_40px_rgb(37,99,235,0.4)] active:translate-y-0"
           >
             Try it for free
             <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
@@ -48,18 +48,18 @@ export default function MarketingHomePage() {
       </section>
 
       {/* Interactive Mockup Section */}
-      <section id="mockup" className="relative z-10 mx-auto mt-24 max-w-[1400px] px-6 lg:px-12">
-        <div className="relative rounded-[2.5rem] border border-white/40 bg-white/40 p-4 shadow-2xl shadow-indigo-900/10 backdrop-blur-3xl sm:p-8">
+      <section id="mockup" className="relative z-10 mx-auto mt-16 max-w-[1400px] px-3 sm:mt-24 sm:px-6 lg:px-12">
+        <div className="relative rounded-[1.75rem] border border-white/40 bg-white/40 p-2 shadow-2xl shadow-indigo-900/10 backdrop-blur-3xl sm:rounded-[2.5rem] sm:p-8">
           
           {/* Mockup Dashboard Shell */}
-          <div className="overflow-hidden rounded-[2rem] border border-white/80 bg-slate-50 shadow-inner">
+          <div className="overflow-hidden rounded-[1.35rem] border border-white/80 bg-slate-50 shadow-inner sm:rounded-[2rem]">
             
-            <div className="grid gap-6 p-6 lg:grid-cols-[1.5fr_1fr] lg:p-10">
+            <div className="grid gap-4 p-3 sm:gap-6 sm:p-6 lg:grid-cols-[1.5fr_1fr] lg:p-10">
               
               {/* Mock Kanban Board */}
-              <div className="rounded-3xl bg-white p-6 shadow-sm">
+              <div className="min-w-0 rounded-2xl bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6">
                 <div className="mb-6 flex items-center justify-between">
-                  <h3 className="text-xl font-bold text-slate-900">Applicant Pipeline</h3>
+                  <h3 className="text-lg font-bold text-slate-900 sm:text-xl">Applicant Pipeline</h3>
                   <div className="flex gap-2">
                     <div className="h-2 w-2 rounded-full bg-red-400" />
                     <div className="h-2 w-2 rounded-full bg-amber-400" />
@@ -69,7 +69,7 @@ export default function MarketingHomePage() {
                 
                 <div className="grid gap-4 md:grid-cols-2">
                   {/* Column 1 */}
-                  <div className="min-h-[300px] rounded-2xl bg-blue-50/50 p-3">
+                  <div className="min-h-0 rounded-2xl bg-blue-50/50 p-3 sm:min-h-[300px]">
                     <div className="mb-4 flex items-center gap-2 px-1">
                       <div className="grid h-8 w-8 place-items-center rounded-xl bg-blue-100 text-blue-600">
                         <UsersRound className="h-4 w-4" />
@@ -97,7 +97,7 @@ export default function MarketingHomePage() {
                   </div>
                   
                   {/* Column 2 */}
-                  <div className="min-h-[300px] rounded-2xl bg-emerald-50/50 p-3">
+                  <div className="min-h-0 rounded-2xl bg-emerald-50/50 p-3 sm:min-h-[300px]">
                     <div className="mb-4 flex items-center gap-2 px-1">
                       <div className="grid h-8 w-8 place-items-center rounded-xl bg-emerald-100 text-emerald-600">
                         <CheckCircle2 className="h-4 w-4" />
@@ -127,8 +127,8 @@ export default function MarketingHomePage() {
               </div>
 
               {/* Mock Onboarding Widget */}
-              <div className="rounded-3xl bg-white p-6 shadow-sm">
-                <h3 className="mb-6 text-xl font-bold text-slate-900">Onboarding</h3>
+              <div className="min-w-0 rounded-2xl bg-white p-4 shadow-sm sm:rounded-3xl sm:p-6">
+                <h3 className="mb-5 text-lg font-bold text-slate-900 sm:mb-6 sm:text-xl">Onboarding</h3>
                 <div className="rounded-2xl bg-brand-50/50 p-5">
                   <div className="flex items-center gap-4">
                     <div className="grid h-12 w-12 place-items-center rounded-full bg-brand-100 text-sm font-bold text-brand-700">AL</div>
@@ -166,9 +166,9 @@ export default function MarketingHomePage() {
 
       <section
         id="hiring-process"
-        className="relative z-10 mx-auto mt-32 max-w-7xl scroll-mt-28 px-6 lg:px-8"
+        className="relative z-10 mx-auto mt-20 max-w-7xl scroll-mt-24 px-4 sm:mt-28 sm:px-6 lg:mt-32 lg:px-8"
       >
-        <div className="grid gap-10 rounded-[2.5rem] bg-slate-950 px-6 py-12 text-white shadow-2xl sm:px-10 lg:grid-cols-[.72fr_1.28fr] lg:items-center lg:px-14 lg:py-16">
+        <div className="grid gap-8 rounded-[2rem] bg-slate-950 px-5 py-10 text-white shadow-2xl sm:rounded-[2.5rem] sm:px-10 sm:py-12 lg:grid-cols-[.72fr_1.28fr] lg:items-center lg:gap-10 lg:px-14 lg:py-16">
           <div>
             <p className="text-xs font-bold uppercase tracking-[.18em] text-blue-300">
               How we hire
@@ -201,7 +201,7 @@ export default function MarketingHomePage() {
       </section>
 
       {/* Features Section */}
-      <section className="relative z-10 mx-auto mt-32 max-w-7xl px-6 pb-32 lg:px-8">
+      <section className="relative z-10 mx-auto mt-20 max-w-7xl px-4 pb-20 sm:mt-28 sm:px-6 sm:pb-28 lg:mt-32 lg:px-8 lg:pb-32">
         <div className="text-center">
           <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
             Designed for modern HR teams.
@@ -210,22 +210,22 @@ export default function MarketingHomePage() {
             Ditch the spreadsheets. Our tools are beautifully crafted to make managing people a breeze.
           </p>
         </div>
-        <div className="mt-16 grid gap-8 md:grid-cols-3">
-          <div className="rounded-3xl bg-white p-8 shadow-[0_4px_20px_rgb(0,0,0,0.03)] transition-transform hover:-translate-y-2">
+        <div className="mt-10 grid gap-5 sm:mt-14 md:grid-cols-3 md:gap-8">
+          <div className="rounded-3xl bg-white p-6 shadow-[0_4px_20px_rgb(0,0,0,0.03)] transition-transform hover:-translate-y-2 sm:p-8">
             <div className="grid h-14 w-14 place-items-center rounded-2xl bg-blue-50 text-blue-600">
               <UsersRound className="h-6 w-6" />
             </div>
             <h3 className="mt-6 text-xl font-bold text-slate-900">Recruitment Pipeline</h3>
             <p className="mt-3 text-slate-500">Track candidates effortlessly with a drag-and-drop Kanban board designed for speed and clarity.</p>
           </div>
-          <div className="rounded-3xl bg-white p-8 shadow-[0_4px_20px_rgb(0,0,0,0.03)] transition-transform hover:-translate-y-2">
+          <div className="rounded-3xl bg-white p-6 shadow-[0_4px_20px_rgb(0,0,0,0.03)] transition-transform hover:-translate-y-2 sm:p-8">
             <div className="grid h-14 w-14 place-items-center rounded-2xl bg-brand-50 text-brand-600">
               <BriefcaseBusiness className="h-6 w-6" />
             </div>
             <h3 className="mt-6 text-xl font-bold text-slate-900">Seamless Onboarding</h3>
             <p className="mt-3 text-slate-500">Ensure new hires feel welcome with automated checklists and progress tracking before day one.</p>
           </div>
-          <div className="rounded-3xl bg-white p-8 shadow-[0_4px_20px_rgb(0,0,0,0.03)] transition-transform hover:-translate-y-2">
+          <div className="rounded-3xl bg-white p-6 shadow-[0_4px_20px_rgb(0,0,0,0.03)] transition-transform hover:-translate-y-2 sm:p-8">
             <div className="grid h-14 w-14 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
               <CheckCircle2 className="h-6 w-6" />
             </div>

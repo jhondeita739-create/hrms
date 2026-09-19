@@ -51,31 +51,31 @@ export default async function VacancyPage({
   if (!job) notFound();
   
   return (
-    <main className="relative min-h-[calc(100vh-80px)] bg-[#FAFBFF] selection:bg-brand-200">
+    <main className="relative min-h-[calc(100vh-80px)] overflow-hidden bg-[#FAFBFF] selection:bg-brand-200">
       {/* Background Mesh Gradients */}
       <div className="pointer-events-none absolute left-[5%] top-0 h-[600px] w-[600px] rounded-full bg-blue-300/10 mix-blend-multiply blur-[120px]" />
       <div className="pointer-events-none absolute right-[5%] top-[20%] h-[600px] w-[600px] rounded-full bg-violet-300/10 mix-blend-multiply blur-[120px]" />
 
       <section className="relative z-10 border-b border-white/40 bg-white/40 backdrop-blur-3xl">
-        <div className="mx-auto w-full max-w-[1400px] px-6 py-12 sm:px-12 lg:py-16">
+        <div className="mx-auto w-full max-w-[1400px] px-4 py-8 sm:px-8 sm:py-12 lg:px-12 lg:py-16">
           <Link
             href="/careers"
-            className="group mb-8 inline-flex items-center gap-2 rounded-full bg-white/60 px-4 py-2 text-sm font-bold text-slate-500 shadow-sm backdrop-blur-md transition-all hover:bg-white hover:text-slate-900"
+            className="group mb-6 inline-flex items-center gap-2 rounded-full bg-white/60 px-4 py-2 text-sm font-bold text-slate-500 shadow-sm backdrop-blur-md transition-all hover:bg-white hover:text-slate-900 sm:mb-8"
           >
             <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
             All open roles
           </Link>
           
-          <div className="flex flex-col justify-between gap-8 md:flex-row md:items-end">
-            <div>
+          <div className="flex flex-col justify-between gap-7 md:flex-row md:items-end">
+            <div className="min-w-0">
               <div className="inline-flex items-center rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-bold uppercase tracking-widest text-brand-700 shadow-sm">
                 {job.department}
               </div>
-              <h1 className="mt-4 text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl lg:text-6xl">
+              <h1 className="mt-4 break-words text-3xl font-extrabold tracking-tight text-slate-900 min-[390px]:text-4xl sm:text-5xl lg:text-6xl">
                 {job.title}
               </h1>
               <div className="mt-6 flex flex-wrap gap-4 text-sm font-bold text-slate-500">
-                <span className="flex items-center gap-2 rounded-full bg-white px-4 py-2 shadow-sm">
+                <span className="flex max-w-full items-center gap-2 rounded-full bg-white px-4 py-2 shadow-sm">
                   <MapPin className="h-4 w-4 text-slate-400" />
                   {job.location} · {job.workArrangement}
                 </span>
@@ -97,7 +97,7 @@ export default async function VacancyPage({
             </div>
             <a
               href="#apply"
-              className="group flex h-14 w-fit items-center rounded-full bg-slate-900 px-8 text-base font-bold text-white shadow-[0_4px_14px_rgb(0,0,0,0.2)] transition-all duration-300 hover:-translate-y-1 hover:bg-slate-800 hover:shadow-[0_8px_30px_rgb(0,0,0,0.25)] active:translate-y-0"
+              className="group flex h-14 w-full items-center justify-center rounded-full bg-slate-900 px-8 text-base font-bold text-white shadow-[0_4px_14px_rgb(0,0,0,0.2)] transition-all duration-300 hover:-translate-y-1 hover:bg-slate-800 hover:shadow-[0_8px_30px_rgb(0,0,0,0.25)] active:translate-y-0 sm:w-fit"
             >
               Apply for this role
             </a>
@@ -105,8 +105,8 @@ export default async function VacancyPage({
         </div>
       </section>
       
-      <div className="relative z-10 mx-auto grid w-full max-w-[1400px] items-start gap-8 px-6 py-12 sm:px-12 lg:py-16 xl:grid-cols-[minmax(320px,.72fr)_minmax(620px,1.28fr)] xl:gap-10">
-        <article className="min-w-0 rounded-[2.5rem] border border-white/60 bg-white/70 p-7 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl sm:p-10">
+      <div className="relative z-10 mx-auto grid w-full max-w-[1400px] items-start gap-6 px-4 py-8 sm:gap-8 sm:px-8 sm:py-12 lg:px-12 lg:py-16 xl:grid-cols-[minmax(320px,.72fr)_minmax(620px,1.28fr)] xl:gap-10">
+        <article className="min-w-0 rounded-[2rem] border border-white/60 bg-white/70 p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl sm:rounded-[2.5rem] sm:p-10">
           <section>
             <h2 className="text-2xl font-bold text-slate-900">About the role</h2>
             <p className="mt-4 whitespace-pre-line text-base leading-relaxed text-slate-600">
@@ -146,8 +146,8 @@ export default async function VacancyPage({
             </section>
           )}
           
-          <section className="mt-12 rounded-[2rem] border border-white bg-blue-50/50 p-8 shadow-sm">
-            <div className="flex gap-4">
+          <section className="mt-10 rounded-[1.5rem] border border-white bg-blue-50/50 p-5 shadow-sm sm:mt-12 sm:rounded-[2rem] sm:p-8">
+            <div className="flex flex-col gap-4 min-[390px]:flex-row">
               <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-blue-100 text-blue-600">
                 <CheckCircle2 className="h-6 w-6" />
               </span>
@@ -166,15 +166,15 @@ export default async function VacancyPage({
         <aside
           id="apply"
           aria-labelledby="application-form-title"
-          className="min-w-0 scroll-mt-28 rounded-[2.5rem] border border-white/70 bg-white/70 p-5 shadow-[0_12px_50px_rgb(15,23,42,0.07)] backdrop-blur-xl sm:p-8"
+          className="min-w-0 scroll-mt-24 rounded-[2rem] border border-white/70 bg-white/70 p-3 shadow-[0_12px_50px_rgb(15,23,42,0.07)] backdrop-blur-xl sm:scroll-mt-28 sm:rounded-[2.5rem] sm:p-8"
         >
-          <div className="mb-8 border-b border-slate-200/80 px-1 pb-8 sm:px-2">
+          <div className="mb-6 border-b border-slate-200/80 px-2 pb-6 sm:mb-8 sm:pb-8">
             <div className="inline-flex items-center rounded-full bg-brand-50 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-brand-700">
               Apply now
             </div>
             <h2
               id="application-form-title"
-              className="mt-4 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl"
+              className="mt-4 break-words text-2xl font-extrabold tracking-tight text-slate-900 sm:text-4xl"
             >
               {job.title}
             </h2>
@@ -195,7 +195,7 @@ export default async function VacancyPage({
 
 function ContentSection({ title, text }: { title: string; text: string }) {
   return (
-    <section className="mt-10 border-t border-slate-100 pt-10">
+    <section className="mt-8 border-t border-slate-100 pt-8 sm:mt-10 sm:pt-10">
       <h2 className="text-2xl font-bold text-slate-900">{title}</h2>
       <p className="mt-4 whitespace-pre-line text-base leading-relaxed text-slate-600">
         {text ||

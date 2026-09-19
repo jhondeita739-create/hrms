@@ -87,7 +87,7 @@ export function ApplicationTracker() {
             <div className="text-[10px] font-semibold uppercase tracking-[.12em] text-blue-200">
               {state.result.reference}
             </div>
-            <h2 className="mt-2 text-xl font-semibold">{state.result.position}</h2>
+            <h2 className="mt-2 break-words text-xl font-semibold">{state.result.position}</h2>
             <p className="mt-1 text-xs text-blue-100/75">
               Applied {formatDate(state.result.appliedAt)}
             </p>
@@ -98,7 +98,7 @@ export function ApplicationTracker() {
               <span className="grid h-10 w-10 place-items-center rounded-full bg-brand-100 text-brand-700">
                 <Clock3 className="h-5 w-5" />
               </span>
-              <div>
+              <div className="min-w-0">
                 <div className="text-xs font-semibold uppercase tracking-[.08em] text-slate-400">
                   Current stage
                 </div>
@@ -248,7 +248,7 @@ function StatusItem({
         {label}
       </div>
       <div className="mt-2 text-sm font-bold text-slate-900">{value}</div>
-      <p className="mt-1 truncate text-xs text-slate-500" title={detail}>
+      <p className="mt-1 break-words text-xs text-slate-500" title={detail}>
         {detail}
       </p>
     </div>

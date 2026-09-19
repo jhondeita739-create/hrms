@@ -25,7 +25,7 @@ export function PublicHeader() {
   ];
   return (
     <header className="sticky top-0 z-50 border-b border-white/20 bg-white/60 shadow-[0_4px_30px_rgb(0,0,0,0.03)] backdrop-blur-2xl">
-      <div className="relative mx-auto flex h-20 w-full max-w-[1600px] items-center px-6 lg:px-12 xl:px-24">
+      <div className="relative mx-auto flex h-16 w-full max-w-[1600px] items-center px-4 sm:h-20 sm:px-6 lg:px-12 xl:px-24">
         <Link
           href="/"
           onClick={() => setOpen(false)}
@@ -35,7 +35,7 @@ export function PublicHeader() {
             src={payrollLogo}
             alt="Priority Handling Logistics, Inc."
             priority
-            className="h-auto w-36 drop-shadow-[0_2px_4px_rgba(30,64,175,0.12)] sm:w-40"
+            className="h-auto w-32 drop-shadow-[0_2px_4px_rgba(30,64,175,0.12)] sm:w-40"
           />
           <span className="sr-only">HRMS homepage</span>
         </Link>
@@ -83,14 +83,14 @@ export function PublicHeader() {
             aria-label={open ? "Close navigation" : "Open navigation"}
             aria-expanded={open}
             onClick={() => setOpen(!open)}
-            className="grid h-10 w-10 place-items-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:bg-slate-50"
+            className="grid h-11 w-11 place-items-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-sm transition-colors hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
           >
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
       </div>
       {open && (
-        <div className="border-t border-slate-100 bg-white/95 px-6 py-6 shadow-2xl backdrop-blur-3xl lg:hidden">
+        <div className="max-h-[calc(100dvh-4rem)] overflow-y-auto border-t border-slate-100 bg-white/95 px-4 py-4 shadow-2xl backdrop-blur-3xl sm:max-h-[calc(100dvh-5rem)] sm:px-6 sm:py-6 lg:hidden">
           <nav className="mx-auto max-w-[1600px] space-y-2">
             {navItems.map((item) => (
               <Link
@@ -129,9 +129,9 @@ export function PublicFooter() {
   return (
     <footer className="relative overflow-hidden bg-slate-950 text-white">
       {/* Decorative footer glow */}
-      <div className="pointer-events-none absolute left-1/2 top-0 h-[300px] w-[800px] -translate-x-1/2 rounded-full bg-brand-500/10 blur-[100px]" />
+      <div className="pointer-events-none absolute left-1/2 top-0 h-[300px] w-[min(800px,100vw)] -translate-x-1/2 rounded-full bg-brand-500/10 blur-[100px]" />
       
-      <div className="relative z-10 mx-auto grid w-full max-w-[1600px] gap-12 px-6 py-16 sm:grid-cols-2 sm:px-12 sm:py-24 lg:grid-cols-[1.5fr_.7fr_.7fr_.8fr] lg:px-24">
+      <div className="relative z-10 mx-auto grid w-full max-w-[1600px] gap-10 px-4 py-12 sm:grid-cols-2 sm:px-8 sm:py-16 lg:grid-cols-[1.5fr_.7fr_.7fr_.8fr] lg:px-12 lg:py-20 xl:px-24">
         <div className="sm:col-span-2 lg:col-span-1">
           <Link
             href="/"
@@ -179,11 +179,11 @@ export function PublicFooter() {
         </div>
       </div>
       <div className="relative z-10 border-t border-white/10 bg-slate-950">
-        <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-6 py-8 text-sm font-medium text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-12 lg:px-24">
+        <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-4 px-4 py-7 text-sm font-medium text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-12 xl:px-24">
           <span>
             © {new Date().getFullYear()} HRMS. All rights reserved.
           </span>
-          <span className="flex items-center gap-3">
+          <span className="flex flex-wrap items-center gap-3">
             <span>Equal opportunity</span>
             <span className="h-1 w-1 rounded-full bg-slate-700" />
             <span>Respectful hiring</span>
@@ -241,7 +241,7 @@ export function JobMeta({
 
 export function EmptyJobs() {
   return (
-    <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white/50 px-8 py-20 text-center backdrop-blur-sm">
+    <div className="rounded-3xl border-2 border-dashed border-slate-200 bg-white/50 px-5 py-14 text-center backdrop-blur-sm sm:px-8 sm:py-20">
       <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-50 text-brand-600 shadow-sm">
         <BriefcaseBusiness className="h-6 w-6" />
       </span>
@@ -257,7 +257,7 @@ export function EmptyJobs() {
 
 export function CareersUnavailable() {
   return (
-    <div className="rounded-3xl border border-amber-200 bg-white/80 px-8 py-16 text-center shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl">
+    <div className="rounded-3xl border border-amber-200 bg-white/80 px-5 py-12 text-center shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl sm:px-8 sm:py-16">
       <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-amber-50 text-amber-600">
         <WifiOff className="h-6 w-6" />
       </span>
