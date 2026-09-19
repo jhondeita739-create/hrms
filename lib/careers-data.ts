@@ -22,6 +22,11 @@ export type PublicVacancy = {
   closingDate: string | null;
 };
 
+export type PublicVacanciesResult = {
+  vacancies: PublicVacancy[];
+  unavailable: boolean;
+};
+
 const previewDescriptions: Record<
   string,
   {
@@ -84,11 +89,13 @@ const previewDescriptions: Record<
   },
 };
 
-export async function getPublicVacancies(): Promise<PublicVacancy[]> {
+export async function getPublicVacancies(): Promise<PublicVacanciesResult> {
   if (!isAdminConfigured())
-    return demoData.vacancies
-      .filter((item) => item.status === "open")
-      .map((item) => {
+    return {
+      unavailable: false,
+      vacancies: demoData.vacancies
+        .filter((item) => item.status === "open")
+        .map((item) => {
         const extra = previewDescriptions[String(item.title)] || {
           description:
             "Join our growing team and make a meaningful contribution.",
@@ -117,7 +124,8 @@ export async function getPublicVacancies(): Promise<PublicVacancy[]> {
           publishedAt: "2026-08-20",
           closingDate: String(item.closing_date),
         };
-      });
+        }),
+    };
   const db = createAdminClient();
   const { data, error } = await db
     .from("job_vacancies")
@@ -127,8 +135,11 @@ export async function getPublicVacancies(): Promise<PublicVacancy[]> {
     .eq("status", "open")
     .is("deleted_at", null)
     .order("published_at", { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data || []).map((row) => {
+  if (error) {
+    console.error("Careers vacancy load failed:", error.message);
+    return { vacancies: [], unavailable: true };
+  }
+  return { unavailable: false, vacancies: (data || []).map((row) => {
     const department = row.departments as unknown as { name?: string } | null;
     const location = row.locations as unknown as {
       name?: string;
@@ -153,11 +164,13 @@ export async function getPublicVacancies(): Promise<PublicVacancy[]> {
       publishedAt: row.published_at,
       closingDate: row.closing_date,
     };
-  });
+  }) };
 }
 
 export async function getPublicVacancy(id: string) {
-  return (
-    (await getPublicVacancies()).find((vacancy) => vacancy.id === id) || null
-  );
+  const result = await getPublicVacancies();
+  return {
+    vacancy: result.vacancies.find((vacancy) => vacancy.id === id) || null,
+    unavailable: result.unavailable,
+  };
 }

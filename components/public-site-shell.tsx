@@ -8,7 +8,9 @@ import {
   ArrowRight,
   BriefcaseBusiness,
   Menu,
+  RefreshCw,
   ShieldCheck,
+  WifiOff,
   X,
 } from "lucide-react";
 import payrollLogo from "../Payroll-logo-removebg.png";
@@ -249,6 +251,29 @@ export function EmptyJobs() {
       <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-slate-500">
         Try a broader search or check back soon. We're always growing and new opportunities are added regularly.
       </p>
+    </div>
+  );
+}
+
+export function CareersUnavailable() {
+  return (
+    <div className="rounded-3xl border border-amber-200 bg-white/80 px-8 py-16 text-center shadow-[0_8px_30px_rgb(0,0,0,0.04)] backdrop-blur-xl">
+      <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-amber-50 text-amber-600">
+        <WifiOff className="h-6 w-6" />
+      </span>
+      <h2 className="mt-6 text-xl font-extrabold text-slate-900">
+        Open roles are temporarily unavailable
+      </h2>
+      <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-slate-500">
+        We could not securely connect to the recruitment service. Please try
+        again shortly; no application information has been lost.
+      </p>
+      <a
+        href="/careers"
+        className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-full bg-slate-900 px-5 text-sm font-bold text-white transition hover:bg-brand-600"
+      >
+        <RefreshCw className="h-4 w-4" /> Try again
+      </a>
     </div>
   );
 }

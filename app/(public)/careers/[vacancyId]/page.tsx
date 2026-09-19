@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { getPublicVacancy } from "@/lib/careers-data";
 import { PublicApplicationForm } from "@/components/public-application-form";
+import { CareersUnavailable } from "@/components/public-site-shell";
 import { formatDate, formatMoney } from "@/lib/utils";
 
 export async function generateMetadata({
@@ -18,9 +19,15 @@ export async function generateMetadata({
 }: {
   params: Promise<{ vacancyId: string }>;
 }): Promise<Metadata> {
-  const job = await getPublicVacancy((await params).vacancyId);
+  const { vacancy: job, unavailable } = await getPublicVacancy(
+    (await params).vacancyId,
+  );
   return {
-    title: job ? `${job.title} · HRMS Careers` : "Role not found",
+    title: unavailable
+      ? "Careers temporarily unavailable"
+      : job
+        ? `${job.title} · HRMS Careers`
+        : "Role not found",
     description: job?.description,
   };
 }
@@ -30,7 +37,17 @@ export default async function VacancyPage({
 }: {
   params: Promise<{ vacancyId: string }>;
 }) {
-  const job = await getPublicVacancy((await params).vacancyId);
+  const { vacancy: job, unavailable } = await getPublicVacancy(
+    (await params).vacancyId,
+  );
+  if (unavailable)
+    return (
+      <main className="grid min-h-[calc(100vh-80px)] place-items-center bg-[#FAFBFF] px-6 py-16">
+        <div className="w-full max-w-2xl">
+          <CareersUnavailable />
+        </div>
+      </main>
+    );
   if (!job) notFound();
   
   return (

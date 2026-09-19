@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, BriefcaseBusiness, Search } from "lucide-react";
 import { getPublicVacancies } from "@/lib/careers-data";
-import { EmptyJobs, JobMeta } from "@/components/public-site-shell";
+import {
+  CareersUnavailable,
+  EmptyJobs,
+  JobMeta,
+} from "@/components/public-site-shell";
 
 export const metadata: Metadata = {
   title: "Open roles · HRMS",
@@ -15,7 +19,7 @@ export default async function CareersPage({
   searchParams: Promise<{ q?: string; department?: string }>;
 }) {
   const params = await searchParams;
-  const vacancies = await getPublicVacancies();
+  const { vacancies, unavailable } = await getPublicVacancies();
   const departments = Array.from(
     new Set(vacancies.map((item) => item.department)),
   ).sort();
@@ -125,7 +129,9 @@ export default async function CareersPage({
               Already applied? Track status
             </Link>
           </div>
-          {filtered.length ? (
+          {unavailable ? (
+            <CareersUnavailable />
+          ) : filtered.length ? (
             <div className="grid gap-5 xl:grid-cols-2">
               {filtered.map((job) => (
                 <Link
