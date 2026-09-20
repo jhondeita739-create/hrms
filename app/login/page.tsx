@@ -3,7 +3,7 @@ import { ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
 import { isSupabaseConfigured } from "@/lib/supabase/server";
 import { PasswordInput } from "@/components/password-input";
 import payrollLogo from "../../Payroll-logo-removebg.png";
-import { signIn, signUp } from "./actions";
+import { signIn } from "./actions";
 
 export default async function LoginPage({
   searchParams,
@@ -74,32 +74,6 @@ export default async function LoginPage({
               Sign in <ArrowRight className="h-4 w-4" />
             </button>
           </form>
-
-          <details className="group mt-5 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-            <summary className="cursor-pointer list-none text-center text-sm font-semibold text-brand-700">
-              Set up the first administrator
-            </summary>
-            <form action={signUp} className="mt-4 space-y-3 border-t border-slate-200 pt-4">
-              <div>
-                <label className="field-label" htmlFor="full_name">Full name</label>
-                <input className="field-control" id="full_name" name="full_name" required />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="signup_email">Work email</label>
-                <input className="field-control" id="signup_email" name="email" type="email" autoComplete="email" required />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="signup_password">Password</label>
-                <PasswordInput id="signup_password" autoComplete="new-password" />
-              </div>
-              <button
-                disabled={!configured}
-                className="h-11 w-full rounded-xl border border-brand-200 bg-white text-sm font-bold text-brand-700 transition-colors hover:bg-brand-50 disabled:opacity-50"
-              >
-                Create administrator
-              </button>
-            </form>
-          </details>
 
           <div className="mt-7 flex items-center justify-center gap-2 text-center text-xs text-slate-400">
             <LockKeyhole className="h-3.5 w-3.5 shrink-0" />

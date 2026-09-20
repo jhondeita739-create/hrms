@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isSmtpConfigured, sendSmtpEmail } from "@/lib/smtp-email";
 
 type NotificationContext = {
   db: SupabaseClient;
@@ -36,9 +37,7 @@ export async function createApplicantNotification(
   });
   if (portalError) throw new Error(portalError.message);
 
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.APPLICANT_EMAIL_FROM;
-  if (!apiKey || !from) return;
+  if (!isSmtpConfigured()) return;
 
   const { data: emailNotification, error: queueError } = await ctx.db
     .from("applicant_notifications")
@@ -59,41 +58,19 @@ export async function createApplicantNotification(
   if (queueError || !emailNotification) return;
 
   try {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "Idempotency-Key": `applicant-${emailNotification.id}`,
-      },
-      body: JSON.stringify({
-        from,
-        to: [details.recipient],
-        subject: details.subject,
-        text: details.body,
-      }),
+    const result = await sendSmtpEmail({
+      to: details.recipient,
+      subject: details.subject,
+      text: details.body,
     });
-    const payload = (await response.json()) as {
-      id?: string;
-      message?: string;
-      error?: { message?: string };
-    };
     await ctx.db
       .from("applicant_notifications")
-      .update(
-        response.ok
-          ? {
-              delivery_status: "sent",
-              provider_message_id: payload.id || null,
-              sent_at: new Date().toISOString(),
-              error_message: null,
-            }
-          : {
-              delivery_status: "failed",
-              error_message:
-                payload.message || payload.error?.message || "Email delivery failed.",
-            },
-      )
+      .update({
+        delivery_status: "sent",
+        provider_message_id: result.messageId || null,
+        sent_at: new Date().toISOString(),
+        error_message: null,
+      })
       .eq("id", emailNotification.id);
   } catch (error) {
     await ctx.db

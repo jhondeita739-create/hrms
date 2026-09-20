@@ -63,3 +63,36 @@ npm run build
 Meaningful HR records are archived instead of physically deleted. Applicant-to-employee conversion is supported through `employees.source_applicant_id`; applications remain attached to the applicant. Assignment edits close the current `employment_records` row, create a new effective-dated row, and add an `employee_movements` audit record.
 
 Exports use an explicit list of displayed business fields. Internal UUIDs, confidential notes, and storage paths are not exported.
+
+# Email delivery
+
+The HRMS uses Gmail SMTP for applicant status and interview notifications. Add
+the following server-only variables to `.env.local` for local development and
+to the Vercel project environment for production:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=your-gmail-address@gmail.com
+SMTP_PASSWORD=your-16-character-google-app-password
+SMTP_FROM="HRMS Careers <your-gmail-address@gmail.com>"
+```
+
+Enable two-step verification on the Google account and use a Google App
+Password for `SMTP_PASSWORD`. Never use or commit the normal Gmail password.
+
+Supabase Auth sends administrator confirmation, temporary employee invitation,
+magic-link, and password emails independently. In Supabase, open **Authentication
+→ Email → SMTP Settings**, enable custom SMTP, and enter the same Gmail settings:
+
+- Host: `smtp.gmail.com`
+- Port: `465`
+- Username: the complete Gmail address
+- Password: the Google App Password
+- Sender email: the same Gmail address
+- Sender name: `HRMS`
+
+Also set the deployed application URL under **Authentication → URL
+Configuration**. Applicant notifications can still be read in the portal when
+SMTP is not configured, but external email delivery is skipped.
