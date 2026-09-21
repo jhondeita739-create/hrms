@@ -36,7 +36,6 @@ import {
   archiveRecord,
   createRecord,
   getDocumentDownloadUrl,
-  permanentlyDeleteApplicant,
   permanentlyDeleteEmployee,
   updateRecord,
   uploadEmployeeDocument,
@@ -261,9 +260,10 @@ export function ResourceWorkspace({
   function purgeRecord() {
     if (!purging) return;
     startTransition(async () => {
-      const result = config.entity === "applicants"
-        ? await permanentlyDeleteApplicant(purging.id, purgeConfirmation)
-        : await permanentlyDeleteEmployee(purging.id, purgeConfirmation);
+      const result = await permanentlyDeleteEmployee(
+        purging.id,
+        purgeConfirmation,
+      );
       setNotice({ text: result.message, ok: result.ok });
       if (result.ok) {
         setPurging(null);
@@ -421,16 +421,18 @@ export function ResourceWorkspace({
             >
               <Pencil className="h-4 w-4" />
             </button>
-            <button
-              type="button"
-              aria-label={`Archive ${config.singular.toLowerCase()}`}
-              title="Archive"
-              onClick={() => setDeleting(row.original)}
-              className="grid h-9 w-9 place-items-center rounded-xl text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
-            >
-              <Archive className="h-4 w-4" />
-            </button>
-            {(config.entity === "employees" || config.entity === "applicants") && allowPermanentDelete && (
+            {config.entity !== "applicants" && (
+              <button
+                type="button"
+                aria-label={`Archive ${config.singular.toLowerCase()}`}
+                title="Archive"
+                onClick={() => setDeleting(row.original)}
+                className="grid h-9 w-9 place-items-center rounded-xl text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
+              >
+                <Archive className="h-4 w-4" />
+              </button>
+            )}
+            {config.entity === "employees" && allowPermanentDelete && (
               <button
                 type="button"
                 aria-label={`Permanently delete ${config.singular.toLowerCase()}`}
@@ -774,15 +776,17 @@ export function ResourceWorkspace({
                     <Download className="h-4 w-4" />
                   </button>
                 )}
-                <button
-                  type="button"
-                  aria-label={`Archive ${config.singular.toLowerCase()}`}
-                  onClick={() => setDeleting(row.original)}
-                  className="grid h-10 w-10 place-items-center rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-600"
-                >
-                  <Archive className="h-4 w-4" />
-                </button>
-                {(config.entity === "employees" || config.entity === "applicants") && allowPermanentDelete && (
+                {config.entity !== "applicants" && (
+                  <button
+                    type="button"
+                    aria-label={`Archive ${config.singular.toLowerCase()}`}
+                    onClick={() => setDeleting(row.original)}
+                    className="grid h-10 w-10 place-items-center rounded-xl text-slate-500 hover:bg-red-50 hover:text-red-600"
+                  >
+                    <Archive className="h-4 w-4" />
+                  </button>
+                )}
+                {config.entity === "employees" && allowPermanentDelete && (
                   <button
                     type="button"
                     aria-label={`Permanently delete ${config.singular.toLowerCase()}`}
@@ -1040,9 +1044,11 @@ export function ResourceWorkspace({
               Permanently delete this {config.singular.toLowerCase()}?
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              {config.entity === "employees"
-                ? "This permanently removes the employee login, profile image, documents and files, requirements, training, onboarding, HR requests, employment records, original applicant, resume, applications, interviews, offers, notifications, and related audit history from Supabase."
-                : "This permanently removes the applicant, resume and files, applications, interviews, offers, notifications, and related audit history from Supabase. Applicants linked to an employee must be deleted from Employee records instead."}
+              This permanently removes the employee login, profile image,
+              documents and files, requirements, training, onboarding, HR
+              requests, employment records, original applicant, resume,
+              applications, interviews, offers, notifications, and related
+              audit history from Supabase.
             </p>
             <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-4">
               <p className="text-xs font-bold uppercase tracking-wide text-rose-700">
@@ -1050,7 +1056,7 @@ export function ResourceWorkspace({
               </p>
               <p className="mt-2 text-sm text-rose-900">
                 Type {config.singular.toLowerCase()} number{" "}
-                <strong>{String(config.entity === "employees" ? purging.employee_number : purging.applicant_number)}</strong>{" "}
+                <strong>{String(purging.employee_number)}</strong>{" "}
                 to confirm.
               </p>
             </div>
@@ -1061,7 +1067,7 @@ export function ResourceWorkspace({
                 value={purgeConfirmation}
                 onChange={(event) => setPurgeConfirmation(event.target.value)}
                 className="field-control mt-2"
-                placeholder={String(config.entity === "employees" ? purging.employee_number : purging.applicant_number)}
+                placeholder={String(purging.employee_number)}
               />
             </label>
             <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
@@ -1079,7 +1085,7 @@ export function ResourceWorkspace({
                 type="button"
                 disabled={
                   pending ||
-                  purgeConfirmation.trim() !== String(config.entity === "employees" ? purging.employee_number : purging.applicant_number)
+                  purgeConfirmation.trim() !== String(purging.employee_number)
                 }
                 onClick={purgeRecord}
                 className="h-11 rounded-xl bg-rose-600 px-5 text-sm font-bold text-white shadow-sm hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-40"

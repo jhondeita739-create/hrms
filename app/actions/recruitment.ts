@@ -155,21 +155,25 @@ export async function updateApplicationStage(
   } | null;
   const vacancy = application.job_vacancies as unknown as { title?: string } | null;
   let notificationWarning = "";
-  if (applicant?.email && (passedResumeScreening || interviewStage || isRejected)) {
+  if (applicant?.email) {
     const subject = interviewStage
       ? `Interview update for ${vacancy?.title || "your application"}`
-      : isHired
-        ? `Application decision: ${vacancy?.title || "your application"}`
-        : isRejected
-          ? `Application update: ${vacancy?.title || "your application"}`
-          : `Resume screening update for ${vacancy?.title || "your application"}`;
+      : isRejected
+        ? `Application decision for ${vacancy?.title || "your application"}`
+        : isWithdrawn
+          ? `Application withdrawn for ${vacancy?.title || "your application"}`
+          : passedResumeScreening
+            ? `Resume screening update for ${vacancy?.title || "your application"}`
+            : `Application moved to ${stage.name}`;
     const body = interviewStage
       ? `Hi ${applicant.first_name || "there"}, you are qualified for an interview and your application has progressed to ${stage.name}. The recruitment team will share scheduling details with you. Use Track application to view updates.`
-      : isHired
-        ? `Hi ${applicant.first_name || "there"}, congratulations. You have been selected for ${vacancy?.title || "the position"}. The HR team will contact you with the next steps.`
-        : isRejected
-          ? `Hi ${applicant.first_name || "there"}, thank you for your interest in ${vacancy?.title || "the position"}. After review, your application was not selected for this role. Your information remains available to the HR team for appropriate future opportunities.`
-          : `Hi ${applicant.first_name || "there"}, your resume passed the initial screening for ${vacancy?.title || "the position"}. No duplicate education or experience form is required. HR will notify you separately if you qualify for an interview.`;
+      : isRejected
+        ? `Hi ${applicant.first_name || "there"}, thank you for your interest in ${vacancy?.title || "the position"}. After review, your application was not selected for this role. Use Track application to view the final status.`
+        : isWithdrawn
+          ? `Hi ${applicant.first_name || "there"}, your application for ${vacancy?.title || "the position"} has been marked withdrawn. Contact the recruitment team if you believe this was recorded in error.`
+          : passedResumeScreening
+            ? `Hi ${applicant.first_name || "there"}, your resume passed the initial screening for ${vacancy?.title || "the position"}. Your application is now at ${stage.name}. Use Track application to follow the next step.`
+            : `Hi ${applicant.first_name || "there"}, your application for ${vacancy?.title || "the position"} has moved to ${stage.name}. Use Track application to view the latest status.`;
     try {
       await createApplicantNotification(ctx, {
         applicantId: application.applicant_id,
@@ -179,7 +183,11 @@ export async function updateApplicationStage(
           ? "qualified_for_interview"
           : isRejected
             ? "rejected"
-            : "resume_screening_passed",
+            : isWithdrawn
+              ? "withdrawn"
+              : passedResumeScreening
+                ? "resume_screening_passed"
+                : "application_stage_updated",
         subject,
         body,
       });
@@ -296,7 +304,7 @@ export async function updateInterview(
   if (!ctx) return { ok: false, message: accessMessage };
   const { data: interview } = await ctx.db
     .from("interviews")
-    .select("id,job_application_id,job_applications(applicant_id)")
+    .select("id,job_application_id,job_applications(id,applicant_id,applicants(first_name,email),job_vacancies(title))")
     .eq("id", interviewId)
     .eq("organization_id", ctx.organizationId)
     .maybeSingle();
@@ -315,9 +323,29 @@ export async function updateInterview(
     .eq("id", interviewId)
     .eq("organization_id", ctx.organizationId);
   if (error) return { ok: false, message: error.message };
-  const application = interview.job_applications as unknown as { applicant_id?: string } | null;
+  const application = interview.job_applications as unknown as {
+    id?: string;
+    applicant_id?: string;
+    applicants?: { first_name?: string; email?: string } | null;
+    job_vacancies?: { title?: string } | null;
+  } | null;
+  let notificationWarning = "";
+  if (application?.id && application.applicant_id && application.applicants?.email) {
+    try {
+      await createApplicantNotification(ctx, {
+        applicantId: application.applicant_id,
+        applicationId: application.id,
+        recipient: application.applicants.email,
+        eventType: "interview_rescheduled",
+        subject: `Interview updated for ${application.job_vacancies?.title || "your application"}`,
+        body: `Hi ${application.applicants.first_name || "there"}, your ${type} schedule has been updated to ${new Date(scheduledStart).toLocaleString("en-PH", { timeZone: rest.timezone })}. ${rest.location ? `Location: ${rest.location}.` : ""} ${meetingUrl ? `Meeting link: ${meetingUrl}.` : ""} Use Track application to view the latest details.`.trim(),
+      });
+    } catch {
+      notificationWarning = " The interview was updated, but the applicant notification could not be queued.";
+    }
+  }
   if (application?.applicant_id) refreshApplicant(application.applicant_id);
-  return { ok: true, message: "Interview updated." };
+  return { ok: true, message: `Interview updated.${notificationWarning || " Applicant notified."}` };
 }
 
 export async function cancelInterview(
@@ -330,7 +358,7 @@ export async function cancelInterview(
     return { ok: false, message: "Interview could not be cancelled." };
   const { data: interview } = await ctx.db
     .from("interviews")
-    .select("id,job_applications(applicant_id)")
+    .select("id,interview_type,scheduled_start,job_applications(id,applicant_id,applicants(first_name,email),job_vacancies(title))")
     .eq("id", interviewId)
     .eq("organization_id", ctx.organizationId)
     .maybeSingle();
@@ -340,9 +368,32 @@ export async function cancelInterview(
     .update({ status: "cancelled" })
     .eq("id", interviewId);
   if (error) return { ok: false, message: error.message };
-  const application = interview.job_applications as unknown as { applicant_id?: string } | null;
+  const application = interview.job_applications as unknown as {
+    id?: string;
+    applicant_id?: string;
+    applicants?: { first_name?: string; email?: string } | null;
+    job_vacancies?: { title?: string } | null;
+  } | null;
+  let notificationWarning = "";
+  if (application?.id && application.applicant_id && application.applicants?.email) {
+    try {
+      await createApplicantNotification(ctx, {
+        applicantId: application.applicant_id,
+        applicationId: application.id,
+        recipient: application.applicants.email,
+        eventType: "interview_cancelled",
+        subject: `Interview cancelled for ${application.job_vacancies?.title || "your application"}`,
+        body: `Hi ${application.applicants.first_name || "there"}, your ${interview.interview_type || "interview"} scheduled for ${new Date(interview.scheduled_start).toLocaleString("en-PH")} has been cancelled. The recruitment team will contact you if a new schedule is arranged. Use Track application for the latest status.`,
+      });
+    } catch {
+      notificationWarning = " The interview was cancelled, but the applicant notification could not be queued.";
+    }
+  }
   if (application?.applicant_id) refreshApplicant(application.applicant_id);
-  return { ok: true, message: "Interview cancelled. Its history was retained." };
+  return {
+    ok: true,
+    message: `Interview cancelled and its history was retained.${notificationWarning || " Applicant notified."}`,
+  };
 }
 
 const evaluationInput = z.object({

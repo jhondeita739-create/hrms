@@ -2,6 +2,9 @@
 
 A workflow-centered HRMS built with Next.js, TypeScript, Supabase Auth, PostgreSQL, private Supabase Storage, Tailwind CSS, React Hook Form, Zod, TanStack Table, and Lucide icons.
 
+The complete illustrated process reference is available in
+[`docs/HRMS_Workflows.docx`](./docs/HRMS_Workflows.docx).
+
 ## Included
 
 - Attention-focused HR dashboard

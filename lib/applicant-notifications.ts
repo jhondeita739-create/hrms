@@ -5,7 +5,7 @@ import { isSmtpConfigured, sendSmtpEmail } from "@/lib/smtp-email";
 
 type NotificationContext = {
   db: SupabaseClient;
-  user: { id: string };
+  user?: { id: string } | null;
   organizationId: string;
 };
 
@@ -33,7 +33,7 @@ export async function createApplicantNotification(
     body: details.body,
     delivery_status: "sent",
     sent_at: new Date().toISOString(),
-    created_by: ctx.user.id,
+    created_by: ctx.user?.id ?? null,
   });
   if (portalError) throw new Error(portalError.message);
 
@@ -51,7 +51,7 @@ export async function createApplicantNotification(
       subject: details.subject,
       body: details.body,
       delivery_status: "pending",
-      created_by: ctx.user.id,
+      created_by: ctx.user?.id ?? null,
     })
     .select("id")
     .single();

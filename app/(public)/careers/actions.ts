@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import "pdf-parse/worker";
 import { PDFParse } from "pdf-parse";
 import { z } from "zod";
+import { createApplicantNotification } from "@/lib/applicant-notifications";
 import { createAdminClient, isAdminConfigured } from "@/lib/supabase/admin";
 
 export type ApplicationState = {
@@ -141,7 +142,7 @@ export async function submitPublicApplication(
   const name = splitFullName(values.full_name);
   const { data: vacancy, error: vacancyError } = await db
     .from("job_vacancies")
-    .select("id,organization_id,status")
+    .select("id,organization_id,status,title")
     .eq("id", values.vacancy_id)
     .eq("status", "open")
     .is("deleted_at", null)
@@ -297,6 +298,21 @@ export async function submitPublicApplication(
     entity_id: application.id,
     metadata: { source: "careers_portal" },
   });
+  try {
+    await createApplicantNotification(
+      { db, organizationId: vacancy.organization_id },
+      {
+        applicantId,
+        applicationId: application.id,
+        recipient: values.email.toLowerCase(),
+        eventType: "application_received",
+        subject: `Application received for ${vacancy.title}`,
+        body: `Hi ${name.firstName}, we received your application for ${vacancy.title}. Your application reference is ${applicationNumber}. Keep this reference and use Track application to follow every recruitment update.`,
+      },
+    );
+  } catch (notificationError) {
+    console.error("Application confirmation notification failed", notificationError);
+  }
   revalidatePath("/hr/recruitment/applicants");
   revalidatePath("/hr/dashboard");
   return {
