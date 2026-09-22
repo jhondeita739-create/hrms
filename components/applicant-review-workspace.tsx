@@ -30,6 +30,7 @@ import {
   generateAiAssessment,
   getApplicantDocumentDownloadUrl,
   reviewAiAssessment,
+  retryApplicantEmail,
   saveInterviewEvaluation,
   updateApplicantDocument,
   updateApplicationStage,
@@ -501,6 +502,21 @@ export function ApplicantReviewWorkspace({
                   <p className="mt-2 text-xs leading-5 text-slate-500">
                     {notification.body}
                   </p>
+                  {notification.channel === "email" && notification.deliveryStatus === "failed" && (
+                    <div className="mt-3 rounded-xl border border-red-100 bg-red-50 p-3">
+                      <p className="text-[11px] leading-5 text-red-700">
+                        {notification.errorMessage || "Email delivery failed."}
+                      </p>
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={() => run(retryApplicantEmail(notification.id))}
+                        className="mt-2 inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-[11px] font-bold text-red-700 shadow-sm ring-1 ring-red-200 transition hover:bg-red-100 disabled:opacity-50"
+                      >
+                        <RotateCw className="h-3.5 w-3.5" /> Retry email
+                      </button>
+                    </div>
+                  )}
                   <div className="mt-3 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                     <span>{notification.channel}</span>
                     <span>{formatDate(notification.queuedAt)}</span>

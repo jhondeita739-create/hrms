@@ -57,6 +57,7 @@ export type ApplicantNotificationRecord = {
   subject: string;
   body: string;
   deliveryStatus: string;
+  errorMessage: string | null;
   queuedAt: string;
 };
 
@@ -244,7 +245,7 @@ export async function getApplicantReviewData(
       applicationIds.length
         ? db
             .from("applicant_notifications")
-            .select("id,job_application_id,event_type,channel,subject,body,delivery_status,queued_at")
+            .select("id,job_application_id,event_type,channel,subject,body,delivery_status,error_message,queued_at")
             .in("job_application_id", applicationIds)
             .order("queued_at", { ascending: false })
         : Promise.resolve({ data: [], error: null }),
@@ -368,6 +369,7 @@ export async function getApplicantReviewData(
             subject: String(item.subject),
             body: String(item.body),
             deliveryStatus: String(item.delivery_status),
+            errorMessage: item.error_message ? String(item.error_message) : null,
             queuedAt: String(item.queued_at),
           })),
       };

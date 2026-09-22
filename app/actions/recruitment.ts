@@ -6,6 +6,7 @@ import "pdf-parse/worker";
 import { PDFParse } from "pdf-parse";
 import { z } from "zod";
 import { createApplicantNotification } from "@/lib/applicant-notifications";
+import { isSmtpConfigured, sendSmtpEmail } from "@/lib/smtp-email";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 
 export type RecruitmentMutationResult =
@@ -175,7 +176,7 @@ export async function updateApplicationStage(
             ? `Hi ${applicant.first_name || "there"}, your resume passed the initial screening for ${vacancy?.title || "the position"}. Your application is now at ${stage.name}. Use Track application to follow the next step.`
             : `Hi ${applicant.first_name || "there"}, your application for ${vacancy?.title || "the position"} has moved to ${stage.name}. Use Track application to view the latest status.`;
     try {
-      await createApplicantNotification(ctx, {
+      const delivery = await createApplicantNotification(ctx, {
         applicantId: application.applicant_id,
         applicationId: application.id,
         recipient: applicant.email,
@@ -191,6 +192,8 @@ export async function updateApplicationStage(
         subject,
         body,
       });
+      if (delivery.emailStatus === "failed")
+        notificationWarning = " The stage was saved, but Gmail delivery failed. Open Applicant notifications to retry.";
     } catch {
       notificationWarning = " The stage was saved, but the notification could not be queued.";
     }
@@ -275,7 +278,7 @@ export async function createInterview(
   let notificationWarning = "";
   if (applicant?.email) {
     try {
-      await createApplicantNotification(ctx, {
+      const delivery = await createApplicantNotification(ctx, {
         applicantId: application.applicant_id,
         applicationId,
         recipient: applicant.email,
@@ -283,6 +286,8 @@ export async function createInterview(
         subject: `Interview scheduled for ${vacancy?.title || "your application"}`,
         body: `Hi ${applicant.first_name || "there"}, you are qualified for an interview. Your ${type} is scheduled for ${new Date(scheduledStart).toLocaleString("en-PH", { timeZone: rest.timezone })}. ${rest.location ? `Location: ${rest.location}.` : ""} ${meetingUrl ? `Meeting link: ${meetingUrl}.` : ""}`.trim(),
       });
+      if (delivery.emailStatus === "failed")
+        notificationWarning = " The interview was saved, but Gmail delivery failed. Open Applicant notifications to retry.";
     } catch {
       notificationWarning = " The interview was saved, but the notification could not be queued.";
     }
@@ -332,7 +337,7 @@ export async function updateInterview(
   let notificationWarning = "";
   if (application?.id && application.applicant_id && application.applicants?.email) {
     try {
-      await createApplicantNotification(ctx, {
+      const delivery = await createApplicantNotification(ctx, {
         applicantId: application.applicant_id,
         applicationId: application.id,
         recipient: application.applicants.email,
@@ -340,6 +345,8 @@ export async function updateInterview(
         subject: `Interview updated for ${application.job_vacancies?.title || "your application"}`,
         body: `Hi ${application.applicants.first_name || "there"}, your ${type} schedule has been updated to ${new Date(scheduledStart).toLocaleString("en-PH", { timeZone: rest.timezone })}. ${rest.location ? `Location: ${rest.location}.` : ""} ${meetingUrl ? `Meeting link: ${meetingUrl}.` : ""} Use Track application to view the latest details.`.trim(),
       });
+      if (delivery.emailStatus === "failed")
+        notificationWarning = " The interview was updated, but Gmail delivery failed. Open Applicant notifications to retry.";
     } catch {
       notificationWarning = " The interview was updated, but the applicant notification could not be queued.";
     }
@@ -377,7 +384,7 @@ export async function cancelInterview(
   let notificationWarning = "";
   if (application?.id && application.applicant_id && application.applicants?.email) {
     try {
-      await createApplicantNotification(ctx, {
+      const delivery = await createApplicantNotification(ctx, {
         applicantId: application.applicant_id,
         applicationId: application.id,
         recipient: application.applicants.email,
@@ -385,6 +392,8 @@ export async function cancelInterview(
         subject: `Interview cancelled for ${application.job_vacancies?.title || "your application"}`,
         body: `Hi ${application.applicants.first_name || "there"}, your ${interview.interview_type || "interview"} scheduled for ${new Date(interview.scheduled_start).toLocaleString("en-PH")} has been cancelled. The recruitment team will contact you if a new schedule is arranged. Use Track application for the latest status.`,
       });
+      if (delivery.emailStatus === "failed")
+        notificationWarning = " The interview was cancelled, but Gmail delivery failed. Open Applicant notifications to retry.";
     } catch {
       notificationWarning = " The interview was cancelled, but the applicant notification could not be queued.";
     }
@@ -394,6 +403,64 @@ export async function cancelInterview(
     ok: true,
     message: `Interview cancelled and its history was retained.${notificationWarning || " Applicant notified."}`,
   };
+}
+
+export async function retryApplicantEmail(
+  notificationId: string,
+): Promise<RecruitmentMutationResult> {
+  if (!isSupabaseConfigured())
+    return { ok: true, message: "Email resent in preview mode." };
+  if (!z.string().uuid().safeParse(notificationId).success)
+    return { ok: false, message: "Select a valid email notification." };
+  const ctx = await context();
+  if (!ctx) return { ok: false, message: accessMessage };
+  if (!isSmtpConfigured())
+    return { ok: false, message: "Configure the SMTP variables in Vercel before retrying email." };
+
+  const { data: notification, error } = await ctx.db
+    .from("applicant_notifications")
+    .select("id,applicant_id,recipient,subject,body,channel")
+    .eq("id", notificationId)
+    .eq("organization_id", ctx.organizationId)
+    .eq("channel", "email")
+    .maybeSingle();
+  if (error || !notification)
+    return { ok: false, message: error?.message || "Email notification could not be found." };
+
+  await ctx.db
+    .from("applicant_notifications")
+    .update({ delivery_status: "pending", error_message: null })
+    .eq("id", notification.id);
+  try {
+    const result = await sendSmtpEmail({
+      to: notification.recipient,
+      subject: notification.subject,
+      text: notification.body,
+    });
+    await ctx.db
+      .from("applicant_notifications")
+      .update({
+        delivery_status: "sent",
+        provider_message_id: result.messageId || null,
+        error_message: null,
+        sent_at: new Date().toISOString(),
+      })
+      .eq("id", notification.id);
+    refreshApplicant(notification.applicant_id);
+    return { ok: true, message: `Email sent to ${notification.recipient}.` };
+  } catch (sendError) {
+    const errorMessage =
+      sendError instanceof Error ? sendError.message : "Email delivery failed.";
+    await ctx.db
+      .from("applicant_notifications")
+      .update({ delivery_status: "failed", error_message: errorMessage })
+      .eq("id", notification.id);
+    refreshApplicant(notification.applicant_id);
+    return {
+      ok: false,
+      message: `Gmail rejected the email: ${errorMessage}`,
+    };
+  }
 }
 
 const evaluationInput = z.object({

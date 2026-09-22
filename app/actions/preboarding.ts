@@ -386,7 +386,7 @@ export async function hireAndStartEmployeePreboarding(
 
   let notificationWarning = "";
   try {
-    await createApplicantNotification(
+    const delivery = await createApplicantNotification(
       { db: ctx.admin, user: ctx.user, organizationId: ctx.organizationId },
       {
         applicantId: application.applicant_id,
@@ -397,6 +397,8 @@ export async function hireAndStartEmployeePreboarding(
         body: `Hi ${applicant.first_name || "there"}, congratulations. You have been selected for ${vacancy?.title || "the position"}. A temporary employee account has been created so you can submit your employment requirements. Check your email for the secure activation link.`,
       },
     );
+    if (delivery.emailStatus === "failed")
+      notificationWarning = " The account was created, but Gmail delivery failed. Open the applicant record to retry the email.";
   } catch {
     notificationWarning = " The account was created, but the applicant notification could not be queued.";
   }
